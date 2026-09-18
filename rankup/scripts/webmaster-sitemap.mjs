@@ -68,8 +68,8 @@
  * 结论由判读者拿着截图与文本对质——解析器对着改版页面报「找不到」时，
  * 截图是唯一能翻案的证人。
  */
-import { execSync } from "node:child_process"
 import { newEvidenceDir, captureScene, writeManifest, sessionSuffix } from "./lib-scene.mjs"
+import { opencliRun } from "./lib-opencli.mjs"
 
 // ── 参数 ──────────────────────────────────────────────────
 const argv = process.argv.slice(2)
@@ -84,6 +84,9 @@ let sitemap = null
 let session = `webmaster-sitemap-${sessionSuffix()}`
 let keepSession = false
 let lang = "auto"
+// opencli 的 Chrome profile 别名（`opencli profile list` 可查）。
+// GSC/Bing/GA4 的登录态与 Similarweb 不在同一个 profile 里，不传就走默认档。
+let profile = null
 
 for (let i = 2; i < argv.length; i++) {
   const a = argv[i]
@@ -91,6 +94,7 @@ for (let i = 2; i < argv.length; i++) {
   if (a === "--site" && argv[i + 1]) { site = argv[++i].replace(/\/+$/, ""); continue }
   if (a === "--sitemap" && argv[i + 1]) { sitemap = argv[++i]; continue }
   if (a === "--session" && argv[i + 1]) { session = argv[++i]; continue }
+  if (a === "--profile" && argv[i + 1]) { profile = argv[++i]; continue }
   if (a === "--keep-session") { keepSession = true; continue }
   if (a === "--lang" && argv[i + 1]) { lang = argv[++i]; continue }
   if (a === "-h" || a === "--help") { usage(); process.exit(0) }
@@ -101,7 +105,8 @@ function usage() {
   console.log(`用法:
   node webmaster-sitemap.mjs gsc    status|submit --property <id> [--sitemap sitemap.xml]
   node webmaster-sitemap.mjs bing   status|submit --site <url>    [--sitemap <完整URL>]
-  node webmaster-sitemap.mjs yandex status|submit --site <url>    [--sitemap <完整URL>]`)
+  node webmaster-sitemap.mjs yandex status|submit --site <url>    [--sitemap <完整URL>]
+  通用：[--session <名>] [--profile <opencli profile 别名>] [--keep-session] [--lang zh|en]`)
 }
 
 if (!["gsc", "bing", "yandex"].includes(platform) || !["status", "submit"].includes(action)) {
@@ -159,16 +164,24 @@ const wanted = (k) => {
 }
 
 // ── OpenCLI 封装 ──────────────────────────────────────────
-function cli(action_, { timeout = 60000 } = {}) {
+// 旧版把命令拼成一个 shell 字符串走 execSync：Windows 的 cmd.exe 不认单引号，
+// eval 的 JS 会被按空格拆碎；2026-09-18 起统一走 lib-opencli 的 argv 直传。
+function cli(sub, payload = null, { timeout = 60000 } = {}) {
+  const pre = profile ? ["--profile", profile] : []
+  const args = [...pre, "browser", session, "--window", "background", sub]
+  if (payload !== null) args.push(payload)
   try {
-    return execSync(`opencli browser "${session}" --window dedicated ${action_}`,
-      { encoding: "utf-8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim()
+    return opencliRun(args, {
+      encoding: "utf-8", timeout, stdio: ["pipe", "pipe", "pipe"],
+      bin: process.env.WEBMASTER_OPENCLI,
+    }).trim()
   } catch (e) {
     // 报错必须带上真实成因。旧版只回显 stderr，而 Node 会把
     // `[UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental` 这类**无害警告**
     // 写进 stderr —— 于是一次 30 秒超时会被显示成那条警告，读的人以为是代理配置问题，
     // 实际是页面没在超时内加载完。2026-08-28 实测踩到，遂改。
     // 超时也从 30s 提到 60s：Bing Webmaster 的 sitemap 页首次加载经常超过 30 秒。
+    const action_ = payload === null ? sub : `${sub} ${payload}`
     const timedOut = e.killed || e.signal === "SIGTERM" || e.code === "ETIMEDOUT"
     const cause = timedOut
       ? `超时（>${timeout}ms）——页面没在时限内加载完，不是参数错`
@@ -183,8 +196,8 @@ function cli(action_, { timeout = 60000 } = {}) {
   }
 }
 /** eval 的 JS 一律包成 IIFE：本环境 eval 上下文跨调用持续，重复声明会抛错。 */
-function evalJs(js) { return cli(`eval '${`(()=>{${js}})()`.replace(/'/g, "'\\''")}'`) }
-function open(url) { cli(`open "${url}"`) }
+function evalJs(js) { return cli("eval", `(()=>{${js}})()`) }
+function open(url) { return cli("open", url) }
 
 /**
  * `wait time` is broken in opencli 1.8.7: it echoes the seconds back but returns
@@ -212,7 +225,7 @@ function waitFor(js, seconds = 10) {
 
 function settle(seconds) {
   const ms = Math.max(0, Math.round(Number(seconds) * 1000))
-  cli(`eval '(async()=>{await new Promise(r=>setTimeout(r,${ms}));return true})()'`, { timeout: ms + 30000 })
+  cli("eval", `(async()=>{await new Promise(r=>setTimeout(r,${ms}));return true})()`, { timeout: ms + 30000 })
 }
 
 /** 坑 1：只取文字，且切片。extract 会把内嵌 base64 图片一起吐出来。 */
@@ -237,7 +250,7 @@ function scene(tag, extra) {
   return captureScene({
     dir: evidenceDir(),
     tag,
-    screenshot: (p) => cli(`screenshot "${p}"`, { timeout: 90000 }),
+    screenshot: (p) => cli("screenshot", p, { timeout: 90000 }),
     pageText: () => pageText(20000),
     extra,
   })
@@ -341,7 +354,7 @@ function stampAndClick(texts, { viaJs = false } = {}) {
     // 先取证后死：按钮找不到时页面到底长什么样，只有截图能回答。
     bail("button-not-found", `页面上找不到按钮（试过：${texts.join(" / ")}）。界面语言可能不是 zh/en，改 LABELS 表——是不是这个成因，看截图。`)
   }
-  if (!viaJs) cli(`click '[data-rankup-target="1"]'`)
+  if (!viaJs) cli("click", '[data-rankup-target="1"]')
   return r
 }
 
