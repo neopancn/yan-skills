@@ -90,7 +90,7 @@ import {
   ensureLoggedIn,
 } from "./webcafe-transport.mjs";
 import { propsFromHtml, isLoginPage } from "./webcafe-rsc.mjs";
-import { execFileSync } from "node:child_process";
+import { opencliRun } from "./lib-opencli.mjs";
 import { newEvidenceDir, captureScene, writeManifest } from "./lib-scene.mjs";
 
 /* ─────────────────────────────── 参数 ─────────────────────────────── */
@@ -142,7 +142,7 @@ function dumpAndDie(ctx, stopReason, msg, payload) {
       dir,
       tag: `fail-${stopReason}`,
       screenshot: ctx?.session
-        ? (p) => execFileSync("opencli", ["browser", ctx.session, "screenshot", p], { stdio: ["ignore", "pipe", "pipe"], timeout: 90_000 })
+        ? (p) => opencliRun(["browser", ctx.session, "screenshot", p], { stdio: ["ignore", "pipe", "pipe"], timeout: 90_000 })
         : undefined,
       extra: payload,
     });

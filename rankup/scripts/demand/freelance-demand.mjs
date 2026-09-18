@@ -63,6 +63,7 @@
  *   - 闲鱼搜索结果是异步渲染，open 之后至少要等 10-15 秒。
  */
 import { execFileSync } from "node:child_process"
+import { opencliRun } from "../lib-opencli.mjs"
 import { writeFileSync } from "node:fs"
 import { requireBrowserBridge, initEvidence, recordSource, writeManifest, saveEvidence, sourceStatusSummary, captureBrowserScene } from "./_lib.mjs"
 
@@ -268,7 +269,7 @@ async function httpGetJSON(url) {
 }
 
 function ocli(args) {
-  return execFileSync("opencli", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 180000 })
+  return opencliRun(args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 180000 })
 }
 
 function ocliEval(session, js, tries) {

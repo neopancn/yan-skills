@@ -6,7 +6,7 @@
  * Missing navigation or send evidence is needs-verification (exit 2), never pass.
  * Uses existing OpenCLI and lib-scene; does not inject or replay analytics requests.
  */
-import { execFileSync } from "node:child_process";
+import { opencliRun } from "./lib-opencli.mjs";
 import { resolve as resolvePath } from "node:path";
 import { realpath } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
@@ -198,7 +198,7 @@ function isDedicatedPoolExhausted(text) {
 }
 function cli(session, args, timeout = 30000) {
   try {
-    return execFileSync("opencli", ["browser", session, "--window", "dedicated", ...args],
+    return opencliRun(["browser", session, "--window", "dedicated", ...args],
       { encoding: "utf8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch (error) {
     const detail = opencliError(error);

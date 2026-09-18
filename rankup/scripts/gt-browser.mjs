@@ -7,10 +7,10 @@
  * 参数保持兼容，--help 查看用法。依赖用户 Chrome 与 OpenCLI 浏览器桥。
  */
 
-import { execFileSync } from "node:child_process";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { newEvidenceDir, captureScene, writeManifest, msleep, pollUntil } from "./lib-scene.mjs";
+import { opencliRun } from "./lib-opencli.mjs";
 
 // 会话名要同时满足两件事，缺一个都会静默出错：
 //   · 描述性——名字是唯一存在的标识，得能回答「这是谁的标签页」；
@@ -30,7 +30,6 @@ function defaultSession() {
 }
 
 const EXPLORE_URL = "https://trends.google.com/trends/explore?hl=en-US";
-const OPENCLI = process.env.GT_OPENCLI ?? "opencli";
 
 const PROPERTY_ALIASES = { web: "", "": "", images: "images", image: "images", news: "news", youtube: "youtube", yt: "youtube", shopping: "froogle", froogle: "froogle" };
 function normalizeProperty(p) {
@@ -110,21 +109,12 @@ function parseArgs(argv) {
 }
 
 function opencliRaw(args, opts = {}) {
-  // Windows: spawning opencli.cmd directly trips Node's CVE-2024-27980 hardening
-  // (EINVAL), and shell:true mangles the JSON --commands argument via cmd.exe
-  // quote stripping. Bypass the .cmd shim entirely: spawn node.exe directly
-  // with opencli's main.js as the first argument.
-  let bin = OPENCLI;
-  let binArgs = args;
-  if (process.platform === "win32" && /\.cmd$/i.test(bin)) {
-    const mainJs = join(dirname(bin), "node_modules", "@jackwener", "opencli", "dist", "src", "main.js");
-    bin = process.execPath;
-    binArgs = [mainJs, ...args];
-  }
-  return execFileSync(bin, binArgs, {
+  // 跨平台 spawn（Windows 的 opencli.cmd 壳问题）统一在 lib-opencli.mjs。
+  return opencliRun(args, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
+    bin: process.env.GT_OPENCLI,
     ...opts,
   });
 }
@@ -202,14 +192,13 @@ function evidenceScene(dir, session) {
     tag: "final",
     screenshot: (p) => {
       if (!openAttempted) return;
-      execFileSync(OPENCLI, ["browser", session, "screenshot", p], { stdio: ["ignore", "pipe", "pipe"], timeout: 90_000 });
+      opencliRaw(["browser", session, "screenshot", p], { timeout: 90_000 });
     },
     pageText: () => {
       if (!openAttempted) return "";
-      return execFileSync(
-        OPENCLI,
+      return opencliRaw(
         ["browser", session, "eval", "(()=>{try{return document.body?document.body.innerText.slice(0,20000):''}catch(e){return 'PAGE_TEXT_FAILED:'+e}})()"],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 },
+        { timeout: 60_000 },
       );
     },
   });

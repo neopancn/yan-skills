@@ -14,11 +14,11 @@ import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const libPath = path.join(here, '../scripts/demand/_lib.mjs');
-const lib = await import(libPath);
+const lib = await import(pathToFileURL(libPath).href);
 
 test('manifest 落盘：argv 剥敏、sources 逐源、stopReason', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'demand-lib-ev-'));
@@ -67,7 +67,7 @@ test('getJson 失败：{url,status,body} 进证据目录，异常带落点路径
 test('空结果输出：源失败与源成功长得不一样；die() 先落 manifest 再退出', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'demand-lib-ev-'));
   const code = `
-    import { initEvidence, recordSource, printTable, die } from ${JSON.stringify(libPath)};
+    import { initEvidence, recordSource, printTable, die } from ${JSON.stringify(pathToFileURL(libPath).href)};
     initEvidence('unit-test-die', { dir: ${JSON.stringify(dir)}, argv: [] });
     recordSource({ source: 'a', status: 'http_429', rawCount: 0, error: 'HTTP 429' });
     printTable([], [{ key: 'x', label: 'x' }]);
@@ -97,7 +97,11 @@ function fakeOpencli(dir, body) {
   return bin;
 }
 
-test('captureBrowserScene：文本与截图成对落进证据目录', () => {
+// 假 opencli 是 /bin/sh 脚本，Windows 无法直接 spawn 无扩展名 shebang 文件；
+// 这条契约由 Unix CI 覆盖，win32 上跳过而不是伪造通过。
+const shShimSkip = process.platform === 'win32' && '/bin/sh 夹具无法在 win32 直接 spawn';
+
+test('captureBrowserScene：文本与截图成对落进证据目录', { skip: shShimSkip }, () => {
   const dir = mkdtemp2(path.join(os.tmpdir(), 'demand-lib-scene-'));
   const binDir = mkdtemp2(path.join(os.tmpdir(), 'demand-lib-bin-'));
   const bin = fakeOpencli(binDir, [
@@ -135,7 +139,7 @@ test('captureBrowserScene：opencli 调不起来也不抛，证人记 null/错�
   }
 });
 
-test('captureBrowserScene：opencli 在场但截图子命令失败时也记 shotError', () => {
+test('captureBrowserScene：opencli 在场但截图子命令失败时也记 shotError', { skip: shShimSkip }, () => {
   const dir = mkdtemp2(path.join(os.tmpdir(), 'demand-lib-scene-'));
   const binDir = mkdtemp2(path.join(os.tmpdir(), 'demand-lib-bin-'));
   const bin = fakeOpencli(binDir, [

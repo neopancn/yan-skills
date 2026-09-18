@@ -48,10 +48,7 @@
  *   - **必须显式带 User-Agent**：不带 UA 的请求会被挡（和 seo-webcafe.mjs 同源的坑）。
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const pExecFile = promisify(execFile);
+import { opencliRunAsync } from "./lib-opencli.mjs";
 
 export const BASE = "https://new.web.cafe";
 
@@ -113,7 +110,7 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /* ─────────────────────────── 浏览器（已登录） ─────────────────────────── */
 
 async function opencli(args, { timeout = 120000 } = {}) {
-  const { stdout } = await pExecFile("opencli", args, { timeout, maxBuffer: 64 * 1024 * 1024 });
+  const { stdout } = await opencliRunAsync(args, { timeout, maxBuffer: 64 * 1024 * 1024 });
   return stdout;
 }
 

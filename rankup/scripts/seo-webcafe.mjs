@@ -13,8 +13,8 @@
 import { writeFileSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import { newEvidenceDir, writeManifest } from "./lib-scene.mjs";
+import { opencliRun, opencliAvailable } from "./lib-opencli.mjs";
 
 const BASE = "https://seo.web.cafe";
 const WEBCAFE_SESSION = "webcafe-nav";
@@ -169,27 +169,23 @@ async function toolAuth(tool) {
   return auth;
 }
 
-let _opencliAvailable;
-function opencliAvailable() {
-  if (_opencliAvailable !== undefined) return _opencliAvailable;
-  try {
-    if (process.platform === "win32") {
-      execFileSync("opencli", ["--version"], { stdio: "ignore", shell: true });
-    } else {
-      execFileSync("which", ["opencli"], { stdio: "ignore" });
-    }
-    _opencliAvailable = true;
-  } catch {
-    _opencliAvailable = false;
-  }
-  return _opencliAvailable;
-}
-
+/**
+ * 登录态默认路径（2026-09-11 事故修复）：驱动用户本机已登录的真实 Chrome（OpenCLI），
+ * 把请求发进已登录的页面里执行，而不是抠 httpOnly cookie。
+ *
+ * 之前的版本只在 quotaPreflight 里打一段文字提示「你可以这样手动跑」，从不真的执行——
+ * 结果是没人愿意手动敲那几行 opencli 命令，脚本实际上永远走 node 侧裸 fetch，
+ * 永远匿名，永远访客档 10/日。三个执行者今天用同一个 KD_TOKEN 批量跑 kd 很快耗尽，
+ * 就是把这条误导性的访客计数当成了真实上限（见 officialQuotaPreflight 的实测修正）。
+ * 这里把「能力」变成「默认行为」：session 类工具默认经浏览器执行，访客只在
+ * OpenCLI 不可用或显式 --guest 时作为兜底，并且兜底必须在 stdout 打印醒目警告。
+ * 跨平台 spawn 细节（Windows 的 .cmd 壳问题）统一在 lib-opencli.mjs，勿在此重抄。
+ */
 /** 一个进程内同一个工具页只 open 一次——批量模式下同一 spec 会调很多次，没必要每次都重新导航。 */
 const browserOpenedTools = new Set();
 function opencliOpenTool(tool) {
   if (browserOpenedTools.has(tool)) return;
-  execFileSync("opencli", ["browser", WEBCAFE_SESSION, "open", `${BASE}/${tool}/`], { shell: true,
+  opencliRun(["browser", WEBCAFE_SESSION, "open", `${BASE}/${tool}/`], {
     encoding: "utf8",
     timeout: 30000,
   });
@@ -198,19 +194,17 @@ function opencliOpenTool(tool) {
 
 /** 在已打开的工具页里跑一段 eval，返回其 stdout（opencli 把结果 JSON 打到 stdout，警告走 stderr）。 */
 function opencliEval(code) {
-  // Windows：shell:true + argv 数组会被 cmd 按元字符拆参。改成单条命令字符串，
-  // JS 整体用双引号包给 cmd，JS 内部只用单引号、不留空格，保证是一个 token。
+  // JS 整体 base64 成无空格单 token：opencli 直连路（node.exe + main.js）本来就不怕
+  // 空格，但兜底的 cmd shell 路怕；包装对两条路都无损。
   const b64 = Buffer.from(code, "utf8").toString("base64");
   const wrapped =
     "(async()=>{const b='" + b64 + "';" +
     "const bin=atob(b);const u8=new Uint8Array(bin.length);" +
     "for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);" +
     "const code=new TextDecoder().decode(u8);return (0,eval)(code);})()";
-  const cmdline = `opencli browser ${WEBCAFE_SESSION} eval "${wrapped}"`;
-  return execFileSync(cmdline, {
+  return opencliRun(["browser", WEBCAFE_SESSION, "eval", wrapped], {
     encoding: "utf8",
     timeout: 30000,
-    shell: true,
   }).trim();
 }
 

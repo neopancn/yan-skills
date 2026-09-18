@@ -8,10 +8,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const at = await import(path.join(here, '../scripts/demand/ads-transparency.mjs'));
+const at = await import(pathToFileURL(path.join(here, '../scripts/demand/ads-transparency.mjs')).href);
 
 test('mapCreativeRow：region/regionCode 显式落字段，不用解析 url 查询参数', () => {
   const now = 1735689600; // 2025-01-01T00:00:00Z，秒

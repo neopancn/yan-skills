@@ -12,10 +12,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const boards = await import(path.join(here, '../scripts/demand/boards.mjs'));
+const boards = await import(pathToFileURL(path.join(here, '../scripts/demand/boards.mjs')).href);
 
 function runExtract(nuxt) {
   const context = vm.createContext({

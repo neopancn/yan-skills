@@ -75,7 +75,7 @@
  *   - Capterra 的 ld+json 里 reviewBody 只有标题那一句，完整 Pros/Cons 在 DOM 里，
  *     脚本两边都取，DOM 优先。
  */
-import { execFileSync } from "node:child_process"
+import { opencliRun } from "../lib-opencli.mjs"
 import { writeFileSync, realpathSync } from "node:fs"
 import { pathToFileURL } from "node:url"
 import { requireBrowserBridge, initEvidence, recordSource, writeManifest, saveEvidence, sourceStatusSummary, captureBrowserScene } from "./_lib.mjs"
@@ -458,7 +458,7 @@ async function getJSON(url) {
 }
 
 function ocli(args) {
-  return execFileSync("opencli", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 180000 })
+  return opencliRun(args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 180000 })
 }
 
 /** opencli eval 有时首次返回时页面还没渲染完，重试几次 */

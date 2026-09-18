@@ -13,11 +13,11 @@ import test from 'node:test';
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const lib = await import(path.join(here, '../scripts/demand/_lib.mjs'));
-const sg = await import(path.join(here, '../scripts/demand/suggest.mjs'));
+const lib = await import(pathToFileURL(path.join(here, '../scripts/demand/_lib.mjs')).href);
+const sg = await import(pathToFileURL(path.join(here, '../scripts/demand/suggest.mjs')).href);
 
 test('parseGoogle：["q", ["s1","s2"]]', () => {
   const text = JSON.stringify(['clipboard history', ['clipboard history windows', 'clipboard history mac']]);

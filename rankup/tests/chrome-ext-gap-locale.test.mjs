@@ -8,10 +8,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const ceg = await import(path.join(here, '../scripts/demand/chrome-ext-gap.mjs'));
+const ceg = await import(pathToFileURL(path.join(here, '../scripts/demand/chrome-ext-gap.mjs')).href);
 
 test('toRecord：gl/reviewLang 从 opts 透传进记录', () => {
   // a 是位置数组：[0]=id, [2]=name, [3]=rating, [4]=ratingCount, [6]=summary, [7]=website

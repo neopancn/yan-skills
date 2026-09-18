@@ -12,10 +12,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const rm = await import(path.join(here, '../scripts/demand/reviews-mine.mjs'));
+const rm = await import(pathToFileURL(path.join(here, '../scripts/demand/reviews-mine.mjs')).href);
 
 test('mapAppstoreEntry：country 是店面代码，lang 固定 null（RSS 不返回评论语言）', () => {
   const entry = {
