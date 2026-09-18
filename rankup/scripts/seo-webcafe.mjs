@@ -193,7 +193,7 @@ function opencliOpenTool(tool) {
 }
 
 /** 在已打开的工具页里跑一段 eval，返回其 stdout（opencli 把结果 JSON 打到 stdout，警告走 stderr）。 */
-function opencliEval(code) {
+function opencliEval(code, timeout = 30000) {
   // JS 整体 base64 成无空格单 token：opencli 直连路（node.exe + main.js）本来就不怕
   // 空格，但兜底的 cmd shell 路怕；包装对两条路都无损。
   const b64 = Buffer.from(code, "utf8").toString("base64");
@@ -204,7 +204,7 @@ function opencliEval(code) {
     "const code=new TextDecoder().decode(u8);return (0,eval)(code);})()";
   return opencliRun(["browser", WEBCAFE_SESSION, "eval", wrapped], {
     encoding: "utf8",
-    timeout: 30000,
+    timeout,
   }).trim();
 }
 
@@ -232,7 +232,12 @@ async function browserRequest(spec, a) {
   })()`;
   let out;
   try {
-    out = opencliEval(code);
+    // SSE 类命令（sse / chatSse / stepSse 三种事件形状，分别是 history / chat / adsense）
+    // 页内 fetch 要等**整个流**读完，30s 会把正常回答掐死——而且失败那一次积分照扣。
+    // 上限取 110s：CDP 单次 eval 实测 ~115s 就超时（pagespeed.mjs 文件头同一节）。
+    // 超时随标记自动继承，新加 SSE 工具时只要打 flag，不用再记着配 evalTimeout。
+    const isStream = Boolean(spec.sse || spec.chatSse || spec.stepSse);
+    out = opencliEval(code, spec.evalTimeout ?? (isStream ? 110000 : 30000));
   } catch (e) {
     throw new Error(`opencli eval 执行失败（session=${WEBCAFE_SESSION}）：${String(e?.message || e).slice(0, 300)}`);
   }
