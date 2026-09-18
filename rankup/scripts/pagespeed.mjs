@@ -171,9 +171,9 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { newEvidenceDir, captureScene, writeManifest, msleep } from "./lib-scene.mjs";
+import { opencliRun } from "./lib-opencli.mjs";
 
 const WEB = "https://pagespeed.web.dev/analysis";
-const OPENCLI = process.env.PAGESPEED_OPENCLI ?? "opencli";
 // 一次 eval 的 CDP 上限实测在 115 秒左右，所以就绪判定必须是「Node 侧多次短 eval」，
 // 不能写成「页内 await 一个长定时器」——后者会以 CDP 超时的形式失败。
 const POLL_MS = 4000;
@@ -351,11 +351,12 @@ function defaultSession() {
 }
 
 function cli(session, args, { timeout = 120_000 } = {}) {
-  return execFileSync(OPENCLI, ["browser", session, ...args], {
+  return opencliRun(["browser", session, ...args], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
     timeout,
+    bin: process.env.PAGESPEED_OPENCLI,
   });
 }
 
