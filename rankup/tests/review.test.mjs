@@ -169,6 +169,51 @@ test("批 A/批 B 齐全且逐行有证据时不报接入缺口", async () => {
   });
 });
 
+// 回归 2026-09-18 的假绿灯：真实项目的 integrations.md 写着 IndexNow ⬜ 未接入、
+// GSC ❌ 从未接入，而这两个检查点当时只做 `text.includes("IndexNow")` / `includes("sitemap")`，
+// 于是「明确记为没做」被显示成「已完成」。提及 ≠ 做过。
+test("IndexNow/sitemap 检查点不因关键词出现过就判完成，负向状态行必须判红", async () => {
+  await withProject(async (root) => {
+    await seed(root, {
+      "infrastructure.md": "zone: example-notlive.com\n",
+      "integrations.md": [
+        "| 平台 | 状态 | 证据 |",
+        "|---|---|---|",
+        "| GSC 验证 | ❌ 判死：从未接入 | DNS 无 google-site-verification TXT |",
+        "| sitemap | ✅ | sitemap-index.xml → sitemap-0.xml，216 URL |",
+        "| IndexNow | ⬜ 未接入 | 排在 GSC 之后 |",
+      ].join("\n"),
+    });
+    const report = JSON.parse(runReview(root, ["--json"]).stdout);
+    const done = (id) => report.lifecycle.checks.find((c) => c.id === id)?.done;
+    assert.equal(done("indexnow"), false, "IndexNow 行是 ⬜，不能因为文件里出现过这个词就算做过");
+    assert.equal(
+      done("sitemap-submitted"),
+      false,
+      "「sitemap 文件生成正常 ✅」不等于「已提交给站长工具」——同一行没点名平台就不算",
+    );
+  });
+});
+
+test("同一行点名站长平台且带证据时，sitemap 检查点正常转绿", async () => {
+  await withProject(async (root) => {
+    await seed(root, {
+      "infrastructure.md": "zone: example-submitted.com\n",
+      "integrations.md": [
+        "| 平台 | 状态 | 证据 |",
+        "|---|---|---|",
+        "| GSC | ✅ | 已验证网域并提交 sitemap-index.xml，后台显示已读取 |",
+      ].join("\n"),
+    });
+    const report = JSON.parse(runReview(root, ["--json"]).stdout);
+    assert.equal(
+      report.lifecycle.checks.find((c) => c.id === "sitemap-submitted")?.done,
+      true,
+      "命中行 ✅ + 同行点名平台 + 有证据 = 该过就要过",
+    );
+  });
+});
+
 test("缺 Yandex 整行、Ahrefs Site Audit 仍是 ⬜ 时报出这两条缺口", async () => {
   await withProject(async (root) => {
     const rows = FULL_INTEGRATIONS_TABLE.split("\n").filter(

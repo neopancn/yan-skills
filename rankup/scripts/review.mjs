@@ -99,6 +99,7 @@ const LIFECYCLE_CHECKS = [
     evidence: "integrations.md",
     // 按内容判定而不是按体积:integrations.md 记着一堆别的平台时体积早就够了,
     // 而"IndexNow 到底接没接"仍然是未知。体积检查在这里会给出一个假的绿灯。
+    // 光有关键词也不够——「IndexNow | ⬜ 未接入」同样命中，见 hasDoneEvidence 的注释。
     mustContain: ["IndexNow", "indexnow"],
     fix: "node <rankup>/scripts/indexnow-submit.mjs --generate-key，然后按 search-platforms.md 接",
     tool: "indexnow-submit.mjs",
@@ -109,7 +110,10 @@ const LIFECYCLE_CHECKS = [
     name: "两边站长工具的 sitemap 已提交",
     group: "上线后",
     evidence: "integrations.md",
+    // 同一行还得点名站长平台：整站静态站的 integrations.md 里「sitemap | ✅ | sitemap-0.xml 216 URL」
+    // 说的是**文件生成正常**，跟提没提交给 GSC/Bing 是两回事。
     mustContain: ["sitemap"],
+    alsoMatch: /gsc|search console|站长|bing|webmaster|indexnow/i,
     fix: "node <rankup>/scripts/webmaster-sitemap.mjs <gsc|bing> submit …，结果记进 integrations.md",
     tool: "webmaster-sitemap.mjs",
     why: "资源验证通过 ≠ sitemap 已提交，这两件事经常只做了前一件",
@@ -206,6 +210,48 @@ function findColumnIndex(headerCells, keyword) {
 // 不算真的留了证据或写清楚了裁决依据/卡点。
 function looksLikeEmptyEvidence(text) {
   return !text || /^[\s\-—–无]*$|^n\/?a$|^tbd$|^待定$/i.test(text.trim());
+}
+
+// 「这一项做了没有」不能靠关键词在文件里出现过就算数——提及 ≠ 做过。
+// 真实事故（2026-09-18）：某项目 integrations.md 明明白白写着
+// 「IndexNow | ⬜ 未接入」「GSC 验证 | ❌ 判死：从未接入」，而 indexnow / sitemap-submitted
+// 两个检查点做的是 `text.includes("IndexNow")` / `includes("sitemap")`，两处都为真，
+// 于是报告把两件**明确记为没做**的事显示成「已完成」。负向状态行恰恰是最不该被算成绿灯的。
+// 判据复用上面逐行核对那一套：命中行 + 状态列是 ✅ + 证据列非空。
+// alsoMatch 给那些「同一个词在别处也合法出现」的检查点用：sitemap-submitted 若只看
+// 「sitemap 出现过且某行打了勾」，会被「sitemap | ✅ | sitemap-index.xml 216 URL」这一行
+// （文件生成正常、**根本没往站长工具提交**）骗过，所以还要求同一行点名站长平台。
+function hasDoneEvidence(text, needles, alsoMatch = null) {
+  const hit = (line) =>
+    needles.some((needle) => line.toLowerCase().includes(needle.toLowerCase()));
+  const { headerCells, rows } = parseIntegrationsTable(text);
+  const statusIdx = findColumnIndex(headerCells, "状态");
+  const evidenceIdx = findColumnIndex(headerCells, "证据");
+  const usable = rows.filter((cells) => statusIdx < 0 || cells.length > statusIdx);
+
+  // 表格里出现过这一行 → 以那一行的状态为准，不再回退全文扫（否则又变回假绿灯）。
+  const tableHits = usable.filter((cells) => hit(cells.join(" ")));
+  if (tableHits.length > 0) {
+    return tableHits.some((cells) => {
+      const rowText = cells.join(" ");
+      if (alsoMatch && !alsoMatch.test(rowText)) return false;
+      const statusCell = statusIdx >= 0 ? (cells[statusIdx] ?? "") : rowText;
+      if (!statusCell.includes("✅")) return false;
+      const inline = statusCell.replace(/✅/g, "").trim();
+      const evidence = statusIdx >= 0 ? (cells[evidenceIdx] ?? "") || inline : inline;
+      return !looksLikeEmptyEvidence(evidence);
+    });
+  }
+
+  // 没有表格命中（自由格式记录）时退到行级：同一行里既要有关键词、又要有 ✅，且不带负向标记。
+  const pending = ["⬜", "❌", "⏸"];
+  return text.split("\n").some(
+    (line) =>
+      hit(line) &&
+      line.includes("✅") &&
+      !pending.some((glyph) => line.includes(glyph)) &&
+      (!alsoMatch || alsoMatch.test(line)),
+  );
 }
 
 function checkIntegrationRows(text) {
@@ -473,7 +519,7 @@ async function checkLifecycle(rankupDir, projectRoot) {
       // 内容检查:文件在、体积够,不代表这一项真的做了。
       try {
         const text = await readFile(path.join(rankupDir, check.evidence), "utf8");
-        done = check.mustContain.some((needle) => text.includes(needle));
+        done = hasDoneEvidence(text, check.mustContain, check.alsoMatch ?? null);
       } catch {
         done = false;
       }
