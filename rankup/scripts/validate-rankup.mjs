@@ -387,6 +387,23 @@ async function validate() {
     );
   }
 
+  // description 是技能**未激活**时各 IDE 唯一会读的一段，也是它们做规范校验的地方：
+  // Claude 的 Skill 规范上限 1024 字符，严格按规范实现的加载器会**静默跳过**超限的
+  // Skill——不报错、不降级，只是那个技能在 IDE 里凭空消失（2026-09-19 实测：zcode
+  // 读不到 rankup，同仓库其它技能正常，当时 description 已漂到 1834 字符）。
+  // 必须写成单行 `description: <值>`（冒号后要空格，否则 YAML 会把整行当普通标量）。
+  const descriptionLine = skillMarkdown.match(/^description:(.*)$/m)?.[1];
+  if (descriptionLine === undefined) {
+    errors.push("SKILL.md frontmatter must have a single-line description");
+  } else if (!/^ ./.test(descriptionLine)) {
+    errors.push("SKILL.md description 冒号后缺空格（`description: 值`），否则不是合法 YAML");
+  } else if (descriptionLine.trim().length > 1024) {
+    errors.push(
+      `SKILL.md description must be ≤1024 字符，found ${descriptionLine.trim().length}` +
+        `——超限的 Skill 会被严格按规范实现的 IDE 静默跳过，长尾触发词写进正文的路由表`,
+    );
+  }
+
   try {
     const repositoryReadme = await readFile(path.join(skillRoot, "..", "README.md"), "utf8");
     if (repositoryReadme.startsWith("# yan-skills") && !repositoryReadme.includes(`版本 \`${expectedVersion}\``)) {

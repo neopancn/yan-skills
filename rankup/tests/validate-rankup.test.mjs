@@ -258,3 +258,32 @@ test("release validator rejects removal of substantive release criteria", async 
     }
   });
 });
+
+// 真实事故（2026-09-19）：rankup 在 zcode 里凭空消失，同仓库其它 Skill 正常。
+// description 一路加触发词加到 1834 字符，超了 Claude 规范的 1024 上限，
+// 严格按规范实现的加载器直接跳过整个 Skill——**不报错**。缺失比报错更糟，因为没人会去查。
+test("release validator rejects a description over the 1024-char spec limit", async () => {
+  await withSkillCopy(async (skillRoot) => {
+    const target = path.join(skillRoot, "SKILL.md");
+    const original = await readFile(target, "utf8");
+    const bloated = original.replace(
+      /^description: .*$/m,
+      `description: ${"经".repeat(1025)}`,
+    );
+    await writeFile(target, bloated);
+    const result = validate(skillRoot);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /description must be ≤1024/);
+  });
+});
+
+test("release validator rejects a description without the YAML space after the colon", async () => {
+  await withSkillCopy(async (skillRoot) => {
+    const target = path.join(skillRoot, "SKILL.md");
+    const original = await readFile(target, "utf8");
+    await writeFile(target, original.replace(/^description: /m, "description:总控"));
+    const result = validate(skillRoot);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /冒号后缺空格/);
+  });
+});
