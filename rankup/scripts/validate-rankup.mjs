@@ -467,7 +467,9 @@ async function validate() {
   const dynamicLeakPatterns = await buildDynamicProjectLeakPatterns();
   const allLeakPatterns = [...projectLeakPatterns, ...dynamicLeakPatterns];
   for (const { file, text } of contents) {
-    const relativePath = path.relative(skillRoot, file);
+    // Windows 上 path.relative 返回反斜杠路径，统一成正斜杠再比对豁免表，
+    // 否则豁免永远不命中，守卫在 win32 上自我告警。
+    const relativePath = path.relative(skillRoot, file).split(path.sep).join("/");
     for (const [label, pattern] of secretPatterns) {
       pattern.lastIndex = 0;
       if (pattern.test(text)) {
