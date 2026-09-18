@@ -9,8 +9,8 @@
 
 import { execFileSync } from "node:child_process";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { newEvidenceDir, captureScene, writeManifest, msleep } from "./lib-scene.mjs";
+import { join, dirname } from "node:path";
+import { newEvidenceDir, captureScene, writeManifest, msleep, pollUntil } from "./lib-scene.mjs";
 
 // 会话名要同时满足两件事，缺一个都会静默出错：
 //   · 描述性——名字是唯一存在的标识，得能回答「这是谁的标签页」；
@@ -110,7 +110,18 @@ function parseArgs(argv) {
 }
 
 function opencliRaw(args, opts = {}) {
-  return execFileSync(OPENCLI, args, {
+  // Windows: spawning opencli.cmd directly trips Node's CVE-2024-27980 hardening
+  // (EINVAL), and shell:true mangles the JSON --commands argument via cmd.exe
+  // quote stripping. Bypass the .cmd shim entirely: spawn node.exe directly
+  // with opencli's main.js as the first argument.
+  let bin = OPENCLI;
+  let binArgs = args;
+  if (process.platform === "win32" && /\.cmd$/i.test(bin)) {
+    const mainJs = join(dirname(bin), "node_modules", "@jackwener", "opencli", "dist", "src", "main.js");
+    bin = process.execPath;
+    binArgs = [mainJs, ...args];
+  }
+  return execFileSync(bin, binArgs, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],

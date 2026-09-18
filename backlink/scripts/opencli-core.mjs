@@ -265,10 +265,12 @@ function meaningfulStderr(stderr) {
 
 export async function run(command, args, options = {}) {
   return await new Promise((resolve, reject) => {
+    const useShell = process.platform === 'win32' && !command.includes('\\') && !command.includes('/') && !command.endsWith('.exe');
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
+      shell: useShell,
     });
     let stdout = '';
     let stderr = '';

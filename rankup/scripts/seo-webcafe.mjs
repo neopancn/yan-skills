@@ -173,7 +173,11 @@ let _opencliAvailable;
 function opencliAvailable() {
   if (_opencliAvailable !== undefined) return _opencliAvailable;
   try {
-    execFileSync("which", ["opencli"], { stdio: "ignore" });
+    if (process.platform === "win32") {
+      execFileSync("opencli", ["--version"], { stdio: "ignore", shell: true });
+    } else {
+      execFileSync("which", ["opencli"], { stdio: "ignore" });
+    }
     _opencliAvailable = true;
   } catch {
     _opencliAvailable = false;
@@ -185,7 +189,7 @@ function opencliAvailable() {
 const browserOpenedTools = new Set();
 function opencliOpenTool(tool) {
   if (browserOpenedTools.has(tool)) return;
-  execFileSync("opencli", ["browser", WEBCAFE_SESSION, "open", `${BASE}/${tool}/`], {
+  execFileSync("opencli", ["browser", WEBCAFE_SESSION, "open", `${BASE}/${tool}/`], { shell: true,
     encoding: "utf8",
     timeout: 30000,
   });
@@ -194,9 +198,19 @@ function opencliOpenTool(tool) {
 
 /** 在已打开的工具页里跑一段 eval，返回其 stdout（opencli 把结果 JSON 打到 stdout，警告走 stderr）。 */
 function opencliEval(code) {
-  return execFileSync("opencli", ["browser", WEBCAFE_SESSION, "eval", code], {
+  // Windows：shell:true + argv 数组会被 cmd 按元字符拆参。改成单条命令字符串，
+  // JS 整体用双引号包给 cmd，JS 内部只用单引号、不留空格，保证是一个 token。
+  const b64 = Buffer.from(code, "utf8").toString("base64");
+  const wrapped =
+    "(async()=>{const b='" + b64 + "';" +
+    "const bin=atob(b);const u8=new Uint8Array(bin.length);" +
+    "for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);" +
+    "const code=new TextDecoder().decode(u8);return (0,eval)(code);})()";
+  const cmdline = `opencli browser ${WEBCAFE_SESSION} eval "${wrapped}"`;
+  return execFileSync(cmdline, {
     encoding: "utf8",
     timeout: 30000,
+    shell: true,
   }).trim();
 }
 
