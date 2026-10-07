@@ -461,9 +461,15 @@ function ensureSearchBoxReady(baseUrl, timeoutMs = 45000) {
  * 失败危险得多（失败会重试，误判成功会被状态文件当成已完成永久跳过）。整页
  * 刷新的代价是比复用 SPA 状态慢几秒，相对于本来就以十秒到分钟计的判词等待，
  * 这个代价可以接受。 */
-function reloadInspectPage(baseUrl, timeoutMs = 20000) {
+function reloadInspectPage(baseUrl, timeoutMs = 45000) {
   open(baseUrl)
-  waitSelector(SEARCH_BOX_SELECTOR, timeoutMs)
+  try {
+    waitSelector(SEARCH_BOX_SELECTOR, timeoutMs)
+  } catch (e) {
+    // GSC 偶发返回 504 错误页（2026-10-07 实测）；重开一次再等。
+    open(baseUrl)
+    waitSelector(SEARCH_BOX_SELECTOR, timeoutMs)
+  }
 }
 
 /** 清空搜索框：点进去、全选、删除。不假设上一次检测完会自动清空（实测会，但
