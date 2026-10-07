@@ -119,7 +119,7 @@ try {
           console.error(`样本 ${sample.id} · ${stage}`);
           const r = await sendTurn({ prompt: text, timeoutS: stage.startsWith("C-") ? 600 : 240, web, continuation: i > 0, natural: true });
           sample.turns.push({ stage, turn: i + 1, prompt: text, ok: r.ok, answer: r.answer || '', cited: r.cited || [],
-            model: r.web?.model || null, searched: r.searched ?? null, durationMs: r.durationMs, failure: r.failure || null });
+            model: r.web?.model || null, searched: r.searched ?? null, durationMs: r.durationMs, failure: r.failure || null, error: (r.error || '').slice(0, 500) });
           if (!r.ok) { save(); throw new Error(`样本 ${sample.id} ${stage} 失败：${r.failure}；立即停止。`); }
           if (stage === 'B-推荐理由' || stage === '复审记录') {
             sample.recommendations = recordedJson(r.answer, 'recommendations');

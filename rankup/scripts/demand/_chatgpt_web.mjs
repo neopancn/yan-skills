@@ -212,6 +212,9 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
     }
     await sleep(Math.min(3000, Math.max(0, deadline-Date.now())));
   }
-  return { ...failedPage(web),ok:false,failure:'timeout',error:`临时对话在 ${timeoutS} 秒内未读到完整回答`,durationMs:Date.now()-t0 };
+  // 超时取证：回答到底来没来（assistant 消息数）、输入框还在不在、页面尾部是什么——
+  // 否则 timeout 无法区分「没发出去 / 在浏览没答完 / 答了但选择器没读到」（2026-10-07 实测需要）。
+  const probe = parseEvalJson(browser('eval', `JSON.stringify({n:document.querySelectorAll('[data-message-author-role="assistant"]').length,composer:!!document.querySelector('[contenteditable="true"][role="textbox"]'),busy:!!document.querySelector('[data-testid="stop-button"],button[aria-label*="停止"]'),tail:(document.body.innerText||'').slice(-250)})`).stdout);
+  return { ...failedPage(web),ok:false,failure:'timeout',error:`临时对话在 ${timeoutS} 秒内未读到完整回答 | probe=${JSON.stringify(probe)}`,durationMs:Date.now()-t0 };
 }
 
