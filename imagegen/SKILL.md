@@ -1,17 +1,46 @@
 ---
 name: imagegen
 metadata:
-  version: "1.0.0"
-description: 当用户要求生成图片、配图、插图、logo、吉祥物、封面、海报、og 图、favicon 源图、真人场景图，或建站时页面缺图、仍有占位图时使用。包括“画一张”“出一套图”“网站需要配图”“image gen”。本 Skill 负责提示词、生成、三道验收、压缩与落盘；只是让 Codex CLI 做代码代理任务时用 codex，普通派单走 agent-fleet，页面 SEO 与上线闸门走 rankup。
+  version: "1.1.0"
+description: 生成网站与内容所需的一切视觉素材——用户说 生成图片、配图、插图、画一张、出一套图、logo、吉祥物、封面、海报、og 图、分享图、favicon 源图、用户场景图、真人图（"一个人坐在电脑前"）、手绘/蜡笔/水彩风插画、产品宣传图、电影感画面、"网站需要配图"、image gen、imagegen 时必用。也覆盖 rankup 建站流程里的"页面缺图、还是占位图、og:image 没图、每页要独立分享图、favicon 还没做"——这些场景不许用占位图，必须真实生成，一律加载本 Skill。两条路线：默认程序化绘制（AI 写 SVG/HTML/CSS → Playwright 渲染成 PNG/WebP，logo/图标/og 卡/图表/排版类一律走这条）；照片/插画/吉祥物等有机内容才走 Codex 内置 OpenAI 图像生成。本 Skill 负责选路线、跑通、验收、压缩、落盘。只是让 Codex CLI 做代码代理任务时用 codex，普通派单走 agent-fleet，页面 SEO 与上线闸门走 rankup。
 ---
 
 # imagegen
 
-**一句话定位**：借 Codex agent 内置的图像生成能力出图；本 Skill 只管五件事——把需求翻成好提示词、把命令跑通、验收、压缩、放进项目该在的目录。
+**一句话定位**：先判断素材能不能"用代码画出来"——能，就 AI 写 SVG/HTML/CSS 再用 Playwright 渲染成图（路线 A，默认）；只有必须"画出来才存在"的有机内容（照片、插画、吉祥物）才走 Codex 生图（路线 B）。选路线之后：跑通、验收、压缩、落盘。
+
+## 路线选择（先读这段）
+
+| 素材 | 路线 | 理由 |
+|---|---|---|
+| logo / favicon / 图标 mark | **A** | 几何形状 SVG 直接画：精确 hex、16px 完美、矢量可缩放、源文件进仓库可复现 |
+| og 分享卡 / 排版类卡片 | **A** | 文字必须清晰——生图模型的字几乎必花；HTML 排版 + 真实项目字体渲染 |
+| 图表 / 示意图 / 流程图 | **A** | 数据与结构本来就是代码的领域 |
+| UI / 产品界面卡（假浏览器窗、文件列表） | **A** | HTML/CSS 渲染出的是像素级 UI，不是"画的 UI" |
+| 用户场景 / 真人照片 | B | 有机内容，代码画不出真实感 |
+| 手绘 / 蜡笔 / 水彩插画 | B | 笔触质感需要生成模型 |
+| 吉祥物（复杂角色） | B | 角色一致性靠生成模型；简单几何吉祥物也可走 A |
+
+## 路线 A（默认）：程序化绘制 → 渲染出图
+
+管线（2026-09-26 ShipToWP 品牌 mark + og 分享卡实测全通过）：
+
+1. **AI 直接写源文件**：几何 mark 写 SVG，og 卡/排版类写 HTML/CSS。hex 调色板写死；og 卡用项目 `public/fonts` 的真实 woff2 `@font-face`，截图前 `await page.evaluate(() => document.fonts.ready)`。
+2. **渲染**：Playwright MCP 的 `browser_run_code_unsafe`——`page.setContent(html)` 后 `locator.screenshot({ omitBackground: true })`（透明必需，不加会烤进白底）。多尺寸 favicon/mark 在同一 HTML 里放 N 个尺寸各截一次。坑：代码里 `require` 不可用（全内联）；`file://` 协议被禁，本地文件起 `npx http-server <dir> -p <port> -c-1` 走 http 再截；MCP playwright 有浏览器 profile 锁（"Browser is already in use"）——换另一个 playwright MCP 实例或先关占用。
+3. **占比控制**：SVG 用 `viewBox` 裁到主体内容边界，主体自然占画布 75-80%——比在提示词里求 AI 靠谱。
+4. **favicon 套件**（PIL）：`Image.open(...).save('public/favicon.ico', sizes=[(32,32),(16,16)])`；`logo.webp` 用 `save(..., 'WEBP', lossless=True)`；apple-touch 拷 180px 版。
+5. **og 卡固定 1200×630**：`setViewportSize` + `screenshot({ clip })`，落 `public/og.png`（PNG/JPEG，爬虫对 webp 不稳）。
+6. **验收**沿用下文三道：接触印相 120px、**直接渲染一个 16px 版打开看过**（favicon 的真实使用尺寸）、独立盲评。
+
+源文件（`.svg`/`.html`）进仓库，渲染产物进 `public/`，再渲染成本趋近于零——改色/改文案只动源文件。
+
+## 路线 B：生图模型（Codex image_gen）——仅照片/插画/吉祥物
+
+⚠️ **2026-09-26 实测：本机 codex 的模型代理（`127.0.0.1:8327/v1/responses`）502 不可用，重试 5 次仍失败，且 `final.md` 写成空文件、exit 0 假成功**——成功与否以 stderr 和产物文件大小为准，别信退出码。路线 A 不依赖此服务。
 
 图像生成**不是 CLI 子命令**（没有 `codex image`；`codex exec --image` 是把图当输入附上）。它是 Codex agent 的内置工具 `image_gen`。不要翻 `codex --help` 找 flag，找不到就下结论"不能生图"——这个结论是错的。描述你要的图，让 agent 自己选方法。
 
-## 启动命令
+## 启动命令（路线 B）
 
 ```bash
 mkdir -p <outdir>                                # 先建目录，提示词里写它的绝对路径
@@ -48,7 +77,7 @@ cat <outdir>/prompt.md | codex exec --skip-git-repo-check \
 
 再加一条常用兜底：`If the exact size is unsupported, generate the nearest aspect and resize locally (sips / PIL) to the exact pixels; keep alpha for transparent items.`
 
-### 完整示例（吉祥物 + og:image 两张一套）
+### 完整示例（路线 B：吉祥物 + 照片型 og 场景，两张一套；排版型 og 卡请走路线 A）
 
 ```markdown
 Generate two images with your built-in image generation tool and save them to:
