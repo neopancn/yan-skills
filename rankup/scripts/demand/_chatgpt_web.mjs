@@ -140,7 +140,10 @@ export async function openSession({ web, timeoutS = 150 }) {
   {
     web.opened = true;
     const opened = browser('open', 'https://chatgpt.com/?temporary-chat=true');
-    if (opened.status !== 0) return { ...failedPage(web), ok: false, failure: 'page', error: (opened.stderr || opened.stdout).trim(), durationMs: Date.now() - t0 };
+    // Navigation rejected 是已知瞬时误报（租约标签其实已导航成功，2026-10-07 实测）；
+    // 后面的就绪轮询会真正裁决页面状态，这里不能因它直接判 page 失败。
+    if (opened.status !== 0 && !/Navigation rejected/i.test(opened.stderr || opened.stdout))
+      return { ...failedPage(web), ok: false, failure: 'page', error: (opened.stderr || opened.stdout).trim(), durationMs: Date.now() - t0 };
     for (;;) {
       const state = parseEvalJson(browser('eval', `JSON.stringify({text:document.body.innerText,ready:!!document.querySelector('[contenteditable="true"][role="textbox"]')})`).stdout);
       const text = state?.text || '';
