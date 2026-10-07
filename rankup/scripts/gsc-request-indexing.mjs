@@ -347,7 +347,11 @@ export function quotaHit(text) {
 
 /** shell 安全的单引号包裹：所有嵌入 opencli 命令行的字面量字符串都走这个，
  *  不用双引号插值——避免 URL / 文案里出现 `$`、反引号被 shell 展开。 */
-export function shq(s) { return `'${String(s).replace(/'/g, "'\\''")}'` }
+export function shq(s) {
+  const v = String(s).replace(/'/g, "'\\''")
+  // cmd.exe 不认 POSIX 单引号（引号会进参数，URL scheme 变成 'https 被拒）；win32 用双引号。
+  return process.platform === 'win32' ? `"${v}"` : `'${v}'`
+}
 
 /**
  * 搜索框自动完成建议项匹配：精确文本优先，找不到再退化成包含匹配；都没有
