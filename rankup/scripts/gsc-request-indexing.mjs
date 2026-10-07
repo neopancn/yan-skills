@@ -400,7 +400,12 @@ function cli(action, { timeout = 60000 } = {}) {
 }
 /** eval 的 JS 一律包成 IIFE：本环境 eval 上下文跨调用持续，重复声明会抛错。 */
 function evalJs(js) { return cli(`eval ${shq(`(()=>{${js}})()`)}`) }
-function open(url) { cli(`open ${shq(url)}`) }
+function open(url) {
+  try { cli(`open ${shq(url)}`) } catch (e) {
+    // opencli 偶发 Navigation rejected，但租约标签已导航成功；后续 waitSelector 再裁决（同 gsc-export）。
+    if (!/Navigation rejected/.test(String(e.message))) throw e
+  }
+}
 function typeInto(target, text) { cli(`type --nth 0 ${shq(target)} ${shq(text)}`) }
 function pressKey(k) { cli(`keys ${shq(k)}`) }
 function clickTarget(target) { cli(`click ${shq(target)}`) }
@@ -432,7 +437,7 @@ const SEARCH_BOX_SELECTOR = "form[role=search] input[role=combobox]"
 
 /** 每个 GSC 页面顶部都有「检查 <domain> 中的任何网址」搜索框，是本脚本驱动
  *  「网址检查」的唯一入口——深链方案已被证伪，见文件头说明。 */
-function ensureSearchBoxReady(baseUrl, timeoutMs = 20000) {
+function ensureSearchBoxReady(baseUrl, timeoutMs = 45000) {
   // 会话可能还没有任何标签页（第一次调用，或上一个标签页被用户/空闲超时关掉），
   // 这种情况下 eval 会直接报「No active session」——不是「页面上没有搜索框」，
   // 不能让这个异常冒泡炸整个脚本，按「需要重新 open」处理即可。
