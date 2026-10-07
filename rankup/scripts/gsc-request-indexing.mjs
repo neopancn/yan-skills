@@ -381,7 +381,9 @@ export function findButtonMatch(candidateTexts, wantList) {
  *    测试不会碰到它们。 ─────────────────────────────────────────── */
 function cli(action, { timeout = 60000 } = {}) {
   try {
-    return execSync(`opencli browser "${session}" --window dedicated ${action}`,
+    // CLI ≥1.10 支持 dedicated；旧 CLI 用 RANKUP_OPENCLI_WINDOW=isolated 降级（2026-10-07 实测）。
+    const windowMode = process.env.RANKUP_OPENCLI_WINDOW || "dedicated";
+    return execSync(`opencli browser "${session}" --window ${windowMode} ${action}`,
       { encoding: "utf-8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim()
   } catch (e) {
     const timedOut = e.killed || e.signal === "SIGTERM" || e.code === "ETIMEDOUT"
