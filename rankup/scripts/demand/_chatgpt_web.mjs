@@ -183,9 +183,13 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
     if (!opened.ok) return opened;
     notice = web.temporaryNotice;
   }
-  const state = natural ? parseEvalJson(browser('eval', `JSON.stringify({count:document.querySelectorAll('[data-message-author-role="assistant"]').length,blocked:/验证码|captcha|verify you are human|too many requests|usage limit|reached the limit|达到.*上限/i.test(([...document.querySelectorAll('[data-message-author-role="assistant"]')].reduce((t,a)=>t.split(a.innerText).join(''),document.body.innerText))),auth:!document.querySelector('[contenteditable="true"][role="textbox"]') && /登录|log in|sign in/i.test(document.body.innerText)})`).stdout) : null;
+  const state = natural ? parseEvalJson(browser('eval', `JSON.stringify({count:document.querySelectorAll('[data-message-author-role="assistant"]').length,lastText:(()=>{const a=[...document.querySelectorAll('[data-message-author-role="assistant"]')];return a.length?a[a.length-1].innerText:''})(),blocked:/验证码|captcha|verify you are human|too many requests|usage limit|reached the limit|达到.*上限/i.test(([...document.querySelectorAll('[data-message-author-role="assistant"]')].reduce((t,a)=>t.split(a.innerText).join(''),document.body.innerText))),auth:!document.querySelector('[contenteditable="true"][role="textbox"]') && /登录|log in|sign in/i.test(document.body.innerText)})`).stdout) : null;
   if (state?.blocked || state?.auth) return { ...failedPage(web), ok: false, failure: state.auth ? 'auth' : 'rate-limit', error: '临时页出现登录、验证码或限流提示', durationMs: Date.now() - t0 };
   const before = state?.count || 0;
+  // ChatGPT 长对话会把旧消息虚拟化出 DOM，assistant 消息数可能不增反降（2026-10-07 实测
+  // probe n=3 < before=4），「count > before」会永远不满足。补一个文本判据：最后一条
+  // assistant 消息的内容与发送前不同即视为新回答到达。
+  const beforeLastText = (state?.lastText || '').trim();
   for (const args of [['type', '[contenteditable="true"][role="textbox"]', prompt], ['click', 'button[data-testid="send-button"]']]) {
     let r = browser(...args);
     // 多轮对话页可能同时存在两个 contenteditable 文本框；选择器歧义时改用 ChatGPT 输入框固定 id 重试一次。
@@ -204,7 +208,7 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
     })())`);
     const got = parseEvalJson(r.stdout);
     if (got?.blocked || got?.auth) return { ...failedPage(web), ok: false, failure: got.auth ? 'auth' : 'rate-limit', error: '临时页出现登录、验证码或限流提示 | hit=' + JSON.stringify(got.blockedHit||'') + ' auth=' + got.auth, durationMs: Date.now() - t0 };
-    if (got?.text && !got.busy && (natural ? got.count > before : got.text.includes('---PROBE---'))) {
+    if (got?.text && !got.busy && (natural ? (got.count > before || (got.text || '').trim() !== beforeLastText) : got.text.includes('---PROBE---'))) {
       const cited = [...new Map(got.links.map(c => [c.url, {...c, domain:regDomain(c.url)}])).values()];
       return { ok: true, answer:got.text, text:got.text, failure:null, pageText:'', cited, searched:got.sources || cited.length > 0, durationMs:Date.now()-t0,
         web:{is_temporary_chat:true,temporaryNotice:notice,memory_scope:null,model:got.model,conversationUrl:'https://chatgpt.com/?temporary-chat=true',citedCount:cited.length,payloadVerified:false},
