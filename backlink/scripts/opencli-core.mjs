@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -263,14 +263,47 @@ function meaningfulStderr(stderr) {
     .trim();
 }
 
+let winOpencliEntry = null;
+async function resolveWinOpencliEntry() {
+  if (winOpencliEntry !== null) return winOpencliEntry;
+  winOpencliEntry = '';
+  // 这台机器上 npm 的 .cmd shim 是坏的（node 装在 C:，npm prefix 在 D:），
+  // `npm root -g` 走 shell 会报 'C:\Program' 不是内部或外部命令——所以不从 npm
+  // 找，改从 PATH 里的 opencli shim（sh 或 cmd 两种）反推它旁边的 node_modules。
+  const dirs = String(process.env.PATH ?? '').split(';').map((d) => d.trim()).filter(Boolean);
+  for (const dir of dirs) {
+    for (const shim of ['opencli', 'opencli.cmd']) {
+      if (!existsSync(join(dir, shim))) continue;
+      const entry = join(dir, 'node_modules', '@jackwener', 'opencli', 'dist', 'src', 'main.js');
+      if (existsSync(entry)) { winOpencliEntry = entry; return winOpencliEntry; }
+    }
+  }
+  return winOpencliEntry;
+}
+
 export async function run(command, args, options = {}) {
-  return await new Promise((resolve, reject) => {
-    const useShell = process.platform === 'win32' && !command.includes('\\') && !command.includes('/') && !command.endsWith('.exe');
-    const child = spawn(command, args, {
+  return await new Promise(async (resolve, reject) => {
+    // Windows 上 opencli 是 npm 的 .cmd shim：spawn 它必须 shell:true，而 Node 的
+    // shell 模式不给参数加引号——eval 里带引号的 JS 片段会被 cmd.exe 打碎
+    // （实测 2026-09-19："too many arguments for 'eval'"）。改为直接用 node 调
+    // opencli 的 JS 入口，参数数组原样传递，不经过任何 shell。
+    let finalCommand = command;
+    let finalArgs = args;
+    const useShell = process.platform === 'win32'
+      && !command.includes('\\') && !command.includes('/') && !command.endsWith('.exe');
+    if (process.platform === 'win32' && command === 'opencli') {
+      const entry = await resolveWinOpencliEntry();
+      if (entry) {
+        finalCommand = process.execPath;
+        finalArgs = [entry, ...args];
+      }
+    }
+    const child = spawn(finalCommand, finalArgs, {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: useShell,
+      // 走了 node 入口直调（finalCommand 已变成带路径的 node.exe）就绝不走 shell
+      shell: useShell && finalCommand === command,
     });
     let stdout = '';
     let stderr = '';
