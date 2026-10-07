@@ -1,5 +1,5 @@
 /** Shared temporary ChatGPT page driver; OpenCLI uses the logged-in Chrome. */
-import { spawnSync } from 'node:child_process';
+import { opencliRun } from '../lib-opencli.mjs';
 
 const SLD2 = new Set(['co.uk', 'org.uk', 'com.au', 'co.jp', 'com.br', 'co.in', 'com.cn', 'com.tw', 'co.kr', 'com.hk', 'com.sg', 'co.nz', 'com.mx', 'com.tr', 'co.za']);
 // 多租户平台：子域名才是「一个产品」，不能折叠到主域
@@ -19,8 +19,19 @@ export function regDomain(input) {
 }
 
 export function oc(args, { timeoutS = 180, env = process.env } = {}) {
-  const r = spawnSync('opencli', args, { env, encoding: 'utf8', timeout: timeoutS * 1000, maxBuffer: 64 * 1024 * 1024 });
-  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '', spawnError: r.error ? (r.error.code || r.error.message) : null };
+  // 统一走 lib-opencli 的 Windows 安全 spawn（裸 spawnSync('opencli') 在 Windows 上
+  // 起不了 .cmd 壳，返回 ENOENT/EINVAL，所有 oc() 调用方全部静默失败——2026-10-07 实测）。
+  try {
+    const stdout = opencliRun(args, { env, encoding: 'utf8', timeout: timeoutS * 1000, maxBuffer: 64 * 1024 * 1024 });
+    return { status: 0, stdout: stdout || '', stderr: '', spawnError: null };
+  } catch (e) {
+    return {
+      status: e.status ?? null,
+      stdout: e.stdout?.toString() || '',
+      stderr: e.stderr?.toString() || e.message || '',
+      spawnError: e.code || e.message || null,
+    };
+  }
 }
 
 /** opencli browser eval 的输出：字符串结果原样打印（一行 JSON），对象结果会被美化；两种都兼容 */

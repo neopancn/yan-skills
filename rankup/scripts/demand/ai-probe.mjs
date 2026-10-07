@@ -137,6 +137,14 @@
  *
  * 已验证日期：2026-09-29。
  *
+ * ⚠️ 已知漂移（2026-10-07 实测，ChatGPT 前端改版）：ensurePrivacySwitches 依赖的
+ * `[data-testid="app-shell-header-context-menu-surface"]` 表面已不存在；个性化入口
+ * 现在在 `[data-testid="accounts-profile-button"]` → 菜单「个性化」→ 设置面板
+ * （自定义指令/记忆/「这些回答并非个性化内容」），旧的 header 按钮读 mode 流程失效，
+ * 报 privacy-switch 停止。临时聊天与登录态本身仍可用（temporary/ready 均可读到）。
+ * 另：geo-loop.mjs 默认强制 AI_PROBE_WEB_WINDOW=dedicated，CLI <1.10 需外部设
+ * isolated 降级（oc/broker 已统一走 lib-opencli 的 Windows 安全 spawn）。
+ *
  * 实测记录（2026-09-29，本机 codex-cli 0.158.0 / gpt-6-sol low / 并发 3；原始证据留在仓库外，不随 skill 分发）：
  *   - codex 通道：三个词（付费工具类、游戏类、平台类各一）各 N×3 + K×3 + C×1，共 21 次全部成功，
  *     单次 50–82 秒（均值约 61 秒），无 402/429；另用 --fetch-google 跑了一遍端到端小样（各 1 次）。
@@ -464,7 +472,7 @@ async function runChatgptWebOnce({ prompt, timeoutS, web }) {
       web.ready = true; web.opened = true; fails = 0;
     }
     const chunkMs = Math.max(3000, Math.min(40000, pollDeadline - Date.now()));
-    const r = oc(['browser', web.session, 'eval', readerJs(conv, chunkMs), '--window', 'dedicated'], { timeoutS: Math.ceil(chunkMs / 1000) + 40 });
+    const r = oc(['browser', web.session, 'eval', readerJs(conv, chunkMs), '--window', process.env.AI_PROBE_WEB_WINDOW || 'dedicated'], { timeoutS: Math.ceil(chunkMs / 1000) + 40 });
     if (r.spawnError === 'ENOENT') return fail('no-opencli', 'PATH 里找不到 opencli');
     const j = parseEvalJson(r.stdout);
     if (!j) { lastErr = (r.stderr || r.stdout || r.spawnError || '').trim().slice(-200); web.ready = false; if (++fails >= 3) return fail('eval-failed', `opencli browser eval 连续 3 次没有可解析输出：${lastErr}`); await sleep(3000); continue; }

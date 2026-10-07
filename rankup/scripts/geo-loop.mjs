@@ -28,8 +28,9 @@ const url = /^[a-z]+:\/\//i.test(args.domain) ? args.domain : `https://${args.do
 const prompts = [...(args.prompt || []), ...(args['prompts-file'] ? readFileSync(args['prompts-file'], 'utf8').split(/\r?\n/).filter(s => s.trim()) : [])];
 const out = resolve(args.out);
 mkdirSync(out, { recursive: true });
-// 共享驱动接受环境覆盖；本闭环按 brief 固定 dedicated。
-process.env.AI_PROBE_WEB_WINDOW = 'dedicated';
+// 共享驱动接受环境覆盖；本闭环默认 dedicated（composer 可见性依赖专用窗口），
+// 但 CLI <1.10 不支持 dedicated（报 unknown window mode），外部可用环境变量降级 isolated。
+if (!process.env.AI_PROBE_WEB_WINDOW) process.env.AI_PROBE_WEB_WINDOW = 'dedicated';
 let pitch = args['pitch-file'] ? readFileSync(args['pitch-file'], 'utf8').trim() : args.pitch;
 const pitchSource = pitch ? '调用方提供的可核实卖点；页面证据由调用方核对' : '卖点未人工核实：仅首页 title/description 兜底';
 if (!pitch && !args.smoke && !args['no-pitch']) {
