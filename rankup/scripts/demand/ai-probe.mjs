@@ -137,11 +137,9 @@
  *
  * 已验证日期：2026-09-29。
  *
- * ⚠️ 已知漂移（2026-10-07 实测，ChatGPT 前端改版）：ensurePrivacySwitches 依赖的
- * `[data-testid="app-shell-header-context-menu-surface"]` 表面已不存在；个性化入口
- * 现在在 `[data-testid="accounts-profile-button"]` → 菜单「个性化」→ 设置面板
- * （自定义指令/记忆/「这些回答并非个性化内容」），旧的 header 按钮读 mode 流程失效，
- * 报 privacy-switch 停止。临时聊天与登录态本身仍可用（temporary/ready 均可读到）。
+ * ✅ 已修复（2026-10-07，ChatGPT 前端改版适配）：旧 `[data-testid="app-shell-header-context-menu-surface"]`
+ * 表面下线；ensurePrivacySwitches 已改读输入框区 `button[aria-label="个性化"|"不个性化"]`
+ * （点击弹 menuitemradio 切换），临时聊天仍为 `button[aria-label="关闭临时聊天"]`。
  * 另：geo-loop.mjs 默认强制 AI_PROBE_WEB_WINDOW=dedicated，CLI <1.10 需外部设
  * isolated 降级（oc/broker 已统一走 lib-opencli 的 Windows 安全 spawn）。
  *

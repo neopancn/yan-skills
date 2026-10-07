@@ -84,13 +84,20 @@ export function closeSession(web) {
 
 /** 已开路径已实测；未验证的模式切换停止，避免未确认状态下发送。 */
 export function ensurePrivacySwitches(web) {
+  // 2026-10-07 ChatGPT 改版适配：旧的 app-shell-header-context-menu-surface 表面已下线。
+  // 会话级个性化控制现在是输入框区一个 aria-label 为「个性化」/「不个性化」的按钮
+  //（点击弹出 menuitemradio：个性化 / 不个性化）；临时聊天仍是 button[aria-label="关闭临时聊天"]。
+  const modeReadJs = `(() => {
+    const btn = [...document.querySelectorAll('button')].find(b => /^(个性化|不个性化)$/.test((b.getAttribute('aria-label')||'').trim()));
+    return btn ? btn.getAttribute('aria-label').trim() : null;
+  })()`;
   const readState = (wait = false) => parseEvalJson(browserCommand(web, ['eval', `(async () => {
     if (${wait}) {
       const deadline = Date.now() + 10000;
-      while ((!document.querySelector('[contenteditable="true"][role="textbox"]') || !document.querySelector('[data-testid="app-shell-header-context-menu-surface"] button[aria-haspopup="menu"]')) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 200));
+      while ((!document.querySelector('[contenteditable="true"][role="textbox"]') || !${modeReadJs.replace(/\n/g, ' ')} ) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 200));
     }
     return JSON.stringify({
-    mode:document.querySelector('[data-testid="app-shell-header-context-menu-surface"] button[aria-haspopup="menu"]')?.innerText.trim(),
+    mode:${modeReadJs},
     temporary:!!document.querySelector('button[aria-label="关闭临时聊天"]'),
     text:document.body.innerText
   });})()`], { timeoutS: 15 }).stdout);
@@ -102,17 +109,18 @@ export function ensurePrivacySwitches(web) {
         const options = {bubbles:true,clientX:rect.x + rect.width / 2,clientY:rect.y + rect.height / 2,button:0,pointerType:'mouse',isPrimary:true};
         for (const type of ['pointerover','pointerenter','mouseover','pointerdown','mousedown','pointerup','mouseup','click']) el.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, options));
       };
-      const button = document.querySelector('[data-testid="app-shell-header-context-menu-surface"] button[aria-haspopup="menu"]');
-      if (button?.innerText.trim() !== '个性化') return JSON.stringify({ok:false});
+      const button = [...document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label')||'').trim() === '个性化');
+      if (!button) return JSON.stringify({ok:false});
       click(button);
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 400));
       const item = [...document.querySelectorAll('[role="menuitemradio"]')].find(el => el.innerText.trim().startsWith('不个性化'));
       if (!item) return JSON.stringify({ok:false});
       click(item);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return JSON.stringify({ok:true});
+      await new Promise(resolve => setTimeout(resolve, 600));
+      const btn = [...document.querySelectorAll('button')].find(b => /^(个性化|不个性化)$/.test((b.getAttribute('aria-label')||'').trim()));
+      return JSON.stringify({ok: btn?.getAttribute('aria-label').trim() === '不个性化'});
     })()`], { timeoutS: 15 }).stdout);
-    if (switched?.ok && browserCommand(web, ['open', 'https://chatgpt.com/?temporary-chat=true'], { timeoutS: 30 }).status === 0) state = readState(true);
+    if (switched?.ok) state = readState(true);
     else state = null;
   }
   const notice = (state?.text || '').split('\n').filter(line => /不会.*记忆|不.*使用.*记忆|won.t.*memor|doesn.t.*memor/i.test(line)).join('\n');
@@ -172,10 +180,10 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
     if (!opened.ok) return opened;
     notice = web.temporaryNotice;
   }
-  const state = natural ? parseEvalJson(browser('eval', `JSON.stringify({count:document.querySelectorAll('[data-markdown-text-style="assistant-message"]').length,blocked:/验证码|captcha|verify you are human|too many requests|usage limit|reached the limit|达到.*上限/i.test(([...document.querySelectorAll('[data-markdown-text-style="assistant-message"]')].reduce((t,a)=>t.split(a.innerText).join(''),document.body.innerText))),auth:!document.querySelector('[contenteditable="true"][role="textbox"]') && /登录|log in|sign in/i.test(document.body.innerText)})`).stdout) : null;
+  const state = natural ? parseEvalJson(browser('eval', `JSON.stringify({count:document.querySelectorAll('[data-message-author-role="assistant"]').length,blocked:/验证码|captcha|verify you are human|too many requests|usage limit|reached the limit|达到.*上限/i.test(([...document.querySelectorAll('[data-message-author-role="assistant"]')].reduce((t,a)=>t.split(a.innerText).join(''),document.body.innerText))),auth:!document.querySelector('[contenteditable="true"][role="textbox"]') && /登录|log in|sign in/i.test(document.body.innerText)})`).stdout) : null;
   if (state?.blocked || state?.auth) return { ...failedPage(web), ok: false, failure: state.auth ? 'auth' : 'rate-limit', error: '临时页出现登录、验证码或限流提示', durationMs: Date.now() - t0 };
   const before = state?.count || 0;
-  for (const args of [['type', '[contenteditable="true"][role="textbox"]', prompt], ['click', 'button[aria-label="发送"]']]) {
+  for (const args of [['type', '[contenteditable="true"][role="textbox"]', prompt], ['click', 'button[data-testid="send-button"]']]) {
     let r = browser(...args);
     // 多轮对话页可能同时存在两个 contenteditable 文本框；选择器歧义时改用 ChatGPT 输入框固定 id 重试一次。
     if (r.status !== 0 && /selector_ambiguous/.test(r.stderr || r.stdout || '') && args[0] === 'type') r = browser('type', '[contenteditable="true"][role="textbox"]', prompt, '--nth', '1');
@@ -184,7 +192,7 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
   while (Date.now() < deadline) {
     const r = browser('eval', `JSON.stringify((() => {
       const text = document.body.innerText;
-      const answers = [...document.querySelectorAll('[data-markdown-text-style="assistant-message"]')];
+      const answers = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
       const nonAnswer = answers.reduce((t,a)=>t.split(a.innerText).join(''),text);
       const answer = answers.pop();
       const busy = !!document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]');
