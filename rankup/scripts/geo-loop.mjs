@@ -117,7 +117,7 @@ try {
             : !args['no-pitch'] && sample.ourAppearance === true && stage === 'B-优劣势' ? '你推荐我们这个站的理由是什么？针对最初需求，它和其他推荐各自有哪些优劣，哪些事实仍待核实？' : originalText;
           if (i) await sleep(8000);
           console.error(`样本 ${sample.id} · ${stage}`);
-          const r = await sendTurn({ prompt: text, timeoutS: 240, web, continuation: i > 0, natural: true });
+          const r = await sendTurn({ prompt: text, timeoutS: stage.startsWith("C-") ? 420 : 240, web, continuation: i > 0, natural: true });
           sample.turns.push({ stage, turn: i + 1, prompt: text, ok: r.ok, answer: r.answer || '', cited: r.cited || [],
             model: r.web?.model || null, searched: r.searched ?? null, durationMs: r.durationMs, failure: r.failure || null });
           if (!r.ok) { save(); throw new Error(`样本 ${sample.id} ${stage} 失败：${r.failure}；立即停止。`); }
