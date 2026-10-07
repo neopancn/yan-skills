@@ -172,7 +172,7 @@ test("quotaHit：英文关键词命中即判", () => {
 
 // ── shell 转义 ────────────────────────────────────────────────
 
-test("shq 生成的单引号字符串经真实 shell 求值后还原原始文本", () => {
+test("shq 生成对应平台 shell 可还原的引号形式", () => {
   const cases = [
     "https://example.com/a",
     "it's a test",
@@ -181,6 +181,15 @@ test("shq 生成的单引号字符串经真实 shell 求值后还原原始文本
     "换行\n和中文",
     "",
   ];
+  if (process.platform === "win32") {
+    // win32 走 cmd.exe（execSync 不经 POSIX shell），shq 只保证双引号包裹形态；
+    // printf 在 cmd 下不存在，shell 往返无法也不必在此验证。
+    for (const s of cases) {
+      const q = shq(s);
+      assert.ok(q.startsWith('"') && q.endsWith('"'), `win32 shq 应为双引号包裹: ${JSON.stringify(q)}`);
+    }
+    return;
+  }
   for (const s of cases) {
     const out = execSync(`printf '%s' ${shq(s)}`, { encoding: "utf8" });
     assert.equal(out, s, `shq 往返失败: ${JSON.stringify(s)}`);

@@ -162,6 +162,7 @@ import { realpath } from "node:fs/promises"
 import { dirname, resolve as resolvePath } from "node:path"
 import { pathToFileURL } from "node:url"
 import { newEvidenceDir, captureScene, writeManifest, sessionSuffix } from "./lib-scene.mjs"
+import { opencliRun } from "./lib-opencli.mjs"
 
 /* ── 参数（延到 main() 里解析，见文件末尾的 invokedAsScript 守卫：
  * 纯函数导出给测试 import 时不能触发真的参数校验/浏览器调用） ────── */
@@ -382,13 +383,17 @@ export function findButtonMatch(candidateTexts, wantList) {
 /* ── OpenCLI 封装（沿用 webmaster-sitemap.mjs 的错误处理：区分超时与真实报错，
  *    过滤 Node 的无害告警，否则一次页面慢加载会被误读成别的故障）。
  *    以下函数都读模块级 `session`/`lang`，只在 main() 的真实运行里被调用，
- *    测试不会碰到它们。 ─────────────────────────────────────────── */
-function cli(action, { timeout = 60000 } = {}) {
+ *    测试不会碰到它们。
+ *    2026-10-07：整体从「shell 字符串 + shq」改成 argv 数组直传——eval 的 JS 载荷
+ *    里的引号在 cmd.exe 上怎么转义都会碎（POSIX '\'' 与双引号 doubling 都实测翻车），
+ *    唯一稳的路是不经 shell：lib-opencli 在 win32 用 node 直跑包入口。 ──────── */
+function cli(argv, { timeout = 60000 } = {}) {
+  const windowMode = process.env.RANKUP_OPENCLI_WINDOW || "dedicated"
+  const full = ["browser", session, "--window", windowMode, ...argv]
+  const action = full.join(" ")
   try {
-    // CLI ≥1.10 支持 dedicated；旧 CLI 用 RANKUP_OPENCLI_WINDOW=isolated 降级（2026-10-07 实测）。
-    const windowMode = process.env.RANKUP_OPENCLI_WINDOW || "dedicated";
-    return execSync(`opencli browser "${session}" --window ${windowMode} ${action}`,
-      { encoding: "utf-8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim()
+    return opencliRun(full,
+      { encoding: "utf-8", timeout, maxBuffer: 64 * 1024 * 1024 }).trim()
   } catch (e) {
     const timedOut = e.killed || e.signal === "SIGTERM" || e.code === "ETIMEDOUT"
     const cause = timedOut ? `超时（>${timeout}ms）` : `退出码 ${e.status ?? "?"}${e.signal ? ` / 信号 ${e.signal}` : ""}`
@@ -399,17 +404,17 @@ function cli(action, { timeout = 60000 } = {}) {
   }
 }
 /** eval 的 JS 一律包成 IIFE：本环境 eval 上下文跨调用持续，重复声明会抛错。 */
-function evalJs(js) { return cli(`eval ${shq(`(()=>{${js}})()`)}`) }
+function evalJs(js) { return cli(["eval", `(()=>{${js}})()`]) }
 function open(url) {
-  try { cli(`open ${shq(url)}`) } catch (e) {
+  try { cli(["open", url]) } catch (e) {
     // opencli 偶发 Navigation rejected，但租约标签已导航成功；后续 waitSelector 再裁决（同 gsc-export）。
     if (!/Navigation rejected/.test(String(e.message))) throw e
   }
 }
-function typeInto(target, text) { cli(`type --nth 0 ${shq(target)} ${shq(text)}`) }
-function pressKey(k) { cli(`keys ${shq(k)}`) }
-function clickTarget(target) { cli(`click ${shq(target)}`) }
-function waitSelector(sel, timeoutMs) { cli(`wait selector ${shq(sel)} --timeout ${timeoutMs}`, { timeout: timeoutMs + 15000 }) }
+function typeInto(target, text) { cli(["type", "--nth", "0", target, text]) }
+function pressKey(k) { cli(["keys", k]) }
+function clickTarget(target) { cli(["click", target]) }
+function waitSelector(sel, timeoutMs) { cli(["wait", "selector", sel, "--timeout", String(timeoutMs)], { timeout: timeoutMs + 15000 }) }
 /** 页面文本判词一律读 body.innerText——GSC 单页应用把旧面板留在 DOM 里
  *  （只是 offsetParent===null），innerText 天然只算可见文本，比
  *  `querySelector('[role=main]')`（会抓到隐藏旧面板）稳。见文件头说明。 */
@@ -418,7 +423,7 @@ function pageText(max = 8000) {
 }
 function settle(seconds) {
   const ms = Math.max(0, Math.round(Number(seconds) * 1000))
-  cli(`eval ${shq(`(async()=>{await new Promise(r=>setTimeout(r,${ms}));return true})()`)}`, { timeout: ms + 30000 })
+  cli(["eval", `(async()=>{await new Promise(r=>setTimeout(r,${ms}));return true})()`], { timeout: ms + 30000 })
 }
 /** 轮询直到 predicate(text) 为真或超时。GSC 的检测/实时测试都没有稳定的 selector 挂钉，只能认文案。 */
 function pollPageText(predicate, timeoutMs, intervalMs = 2000) {
@@ -596,7 +601,7 @@ function scene(tag, extra) {
   return captureScene({
     dir: evidenceDir(),
     tag,
-    screenshot: (p) => cli(`screenshot ${shq(p)}`, { timeout: 90000 }),
+    screenshot: (p) => cli(["screenshot", p], { timeout: 90000 }),
     pageText: () => { try { return pageText(20000) } catch { return "" } },
     extra,
   })
