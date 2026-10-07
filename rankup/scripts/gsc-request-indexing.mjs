@@ -447,7 +447,13 @@ function ensureSearchBoxReady(baseUrl, timeoutMs = 45000) {
   } catch { /* 没有活动会话/标签页，走下面的 open() 重建 */ }
   if (found.includes("OK")) return
   open(baseUrl)
-  waitSelector(SEARCH_BOX_SELECTOR, timeoutMs)
+  try {
+    waitSelector(SEARCH_BOX_SELECTOR, timeoutMs)
+  } catch (e) {
+    // GSC 偶发 504 错误页（2026-10-07 实测）；重开一次再等。
+    open(baseUrl)
+    waitSelector(SEARCH_BOX_SELECTOR, timeoutMs)
+  }
 }
 
 /**
