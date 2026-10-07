@@ -82,8 +82,23 @@ if (opt.dryRun) {
 }
 const out = resolve(opt.out)
 mkdirSync(out, { recursive: true })
+// Windows 上 npm 全局 bin 是 .cmd shim，spawnSync('opencli') 起不来（EINVAL/ENOENT）；
+// 改用 node 直跑包入口。npm prefix -g 一次定位，缓存结果。
+let ocEntry
+function opencliBin(args, opts) {
+  if (process.platform === 'win32') {
+    ocEntry ??= (() => {
+      const npm = spawnSync('npm', ['prefix', '-g'], { encoding: 'utf8', shell: true, timeout: 20000 })
+      const prefix = (npm.stdout || '').trim().split(/\r?\n/).pop()
+      if (npm.status !== 0 || !prefix) throw new Error(`npm prefix -g 失败：${npm.stderr || `退出码 ${npm.status}`}`)
+      return resolve(prefix.trim(), 'node_modules/@jackwener/opencli/dist/src/main.js')
+    })()
+    return spawnSync(process.execPath, [ocEntry, ...args], opts)
+  }
+  return spawnSync('opencli', args, opts)
+}
 function cli(...parts) {
-  const r = spawnSync('opencli', ['browser', session, '--window', 'dedicated', ...parts], { encoding: 'utf8', timeout: 45000, maxBuffer: 20 * 1024 * 1024 })
+  const r = opencliBin(['browser', session, '--window', 'isolated', ...parts], { encoding: 'utf8', timeout: 45000, maxBuffer: 20 * 1024 * 1024 })
   if (r.error || r.status !== 0) throw new Error(`opencli ${parts[0]} 失败：${(r.error?.message || r.stderr || r.stdout || `退出码 ${r.status}`).trim().slice(0, 400)}`)
   return r.stdout.trim()
 }
@@ -176,7 +191,8 @@ function indexing() {
   for (const row of rows) {
     const cells = row.split(/[\n\t]+/).map(x => x.trim()).filter(Boolean)
     const count = Number(cells.at(-1)?.replaceAll(',', ''))
-    if (!Number.isInteger(count) || !cells[0] || /原因|Reason/.test(cells[0])) continue
+    // 0 行的原因没有明细页可下钻（点击不跳 drilldown），直接跳过
+    if (!Number.isInteger(count) || count === 0 || !cells[0] || /原因|Reason/.test(cells[0])) continue
     const reason = { reason: cells[0], count, source: null, examples: [], reportedTotal: null, complete: false }
     {
       // GSC 的原因行可点击，但通常没有 <a href>；点该行只做页面导航。
@@ -184,8 +200,8 @@ function indexing() {
       const click = `(()=>{const r=Array.from(document.querySelectorAll('table tr')).find(r=>r.innerText.trim().startsWith(${JSON.stringify(cells[0])}));if(!r)return false;r.click();return true})()`
       if (cli('eval', click) !== 'true') throw new Error(`无法打开索引原因：${cells[0]}`)
       let detail = null
-      for (let n = 0; n < 8; n++) {
-        pause(900)
+      for (let n = 0; n < 15; n++) {
+        pause(1000)
         const next = JSON.parse(cli('extract'))
         const table = readTable(-1)
         if (next.url?.includes('/index/drilldown') && table?.rows[0]?.[0]?.startsWith('http') && pagination(table.footer)) { detail = next; break }
@@ -270,7 +286,7 @@ const actions = {
   slices,
   indexing, sitemaps, inspect
 }
-const sessions = spawnSync('opencli', ['browser', 'sessions', '-f', 'json'], { encoding: 'utf8', timeout: 10000 })
+const sessions = opencliBin(['browser', 'sessions', '-f', 'json'], { encoding: 'utf8', timeout: 10000 })
 if (sessions.status !== 0) throw new Error('无法查询现有 opencli 会话，停止以免误用他人会话')
 if (JSON.parse(sessions.stdout).some(x => x.session === session)) throw new Error(`会话名已被占用：${session}`)
 let opened = false
