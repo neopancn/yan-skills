@@ -13,7 +13,9 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { cfAuthHeaders, resolveCfAccountId } from "./lib-cf-auth.mjs"
+import { opencliRun } from "./lib-opencli.mjs"
 
 const argv = process.argv.slice(2)
 if (argv.includes("--help") || argv.includes("-h")) {
@@ -34,7 +36,7 @@ if (!domain || (!repo && (!only || only.has("indexnow")) && !skip.has("indexnow"
   process.exit(1)
 }
 const site = `https://${domain}`
-const script = name => new URL(`./${name}.mjs`, import.meta.url).pathname
+const script = name => fileURLToPath(new URL(`./${name}.mjs`, import.meta.url))
 const run = (name, ...args) => execFileSync(process.execPath, [script(name), ...args],
   { encoding: "utf8", timeout: 180000, stdio: ["ignore", "pipe", "pipe"] })
 const browser = name => ["--session", `${session}-${name}`]
@@ -47,7 +49,7 @@ const live = async (name, id) => Boolean(id) && (await homepage()).includes(id) 
   (name !== "cf" || /beacon\.min\.js/.test(await homepage()))
 const ids = {}
 function skillEnv() {
-  const file = join(new URL("..", import.meta.url).pathname, ".env")
+  const file = join(fileURLToPath(new URL("..", import.meta.url)), ".env")
   if (!existsSync(file)) return
   for (const line of readFileSync(file, "utf8").split("\n")) {
     const match = line.match(/^([A-Z_]+)=(.*)$/)
@@ -109,10 +111,10 @@ function existingAnalyticsId(name, code) {
   const window = name === "ga4" ? ["--window", "dedicated", "--window-slot", "ga4-setup"] : ["--window", "dedicated"]
   try {
     run(`${name}-setup`, "status", ...(name === "ga4" ? ["--domain", domain] : []), ...browser(name), "--keep-session")
-    return execFileSync("opencli", ["browser", currentSession, ...window, "eval", code],
+    return opencliRun(["browser", currentSession, ...window, "eval", code],
       { encoding: "utf8", timeout: 30000, stdio: ["ignore", "pipe", "pipe"] }).trim()
   } finally {
-    try { execFileSync("opencli", ["browser", currentSession, ...window, "close"], { stdio: "ignore", timeout: 10000 }) } catch {}
+    try { opencliRun(["browser", currentSession, ...window, "close"], { stdio: "ignore", timeout: 10000 }) } catch {}
   }
 }
 function ga4Scope() {

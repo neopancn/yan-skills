@@ -13,7 +13,7 @@
  * 2026-10-02：轮询资源弹窗与验证结果；DNS 提供商从 listbox 选择。
  * TXT 传播查询公共 DNS，避免本机负缓存阻塞；2026-10-02 实测 TXT 新增后 GSC 自动验证成功。
  */
-import { execFileSync } from "node:child_process"
+import { opencliRun } from "./lib-opencli.mjs"
 import { cfAuthHeaders } from "./lib-cf-auth.mjs"
 
 const [action, ...rest] = process.argv.slice(2)
@@ -32,7 +32,7 @@ const propertyUrl = `https://search.google.com/search-console/sitemaps?resource_
 let opened = false
 let sitemapListed = false
 function browser(...parts) {
-  return execFileSync("opencli", ["browser", session, "--window", "dedicated", ...parts],
+  return opencliRun(["browser", session, "--window", "dedicated", ...parts],
     { encoding: "utf8", timeout: 90000 }).trim()
 }
 function evalJs(source) { return browser("eval", `(()=>{${source}})()`) }

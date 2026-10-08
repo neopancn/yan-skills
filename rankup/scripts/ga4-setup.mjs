@@ -39,8 +39,8 @@
  * create 不宣布「✅ 创建成功」——页面出现 Measurement ID 只说明导航到了
  * 数据流详情，成没成以截图为准。
  */
-import { execFileSync } from "node:child_process"
 import { newEvidenceDir, captureScene, writeManifest, sessionSuffix } from "./lib-scene.mjs"
+import { opencliRun } from "./lib-opencli.mjs"
 
 const argv = process.argv.slice(2)
 if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") { usage(); process.exit(argv.length === 0 ? 1 : 0) }
@@ -86,7 +86,7 @@ domain = domain ? domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "") : doma
 function cli(args, { timeout = 30000 } = {}) {
   try {
     const windowArgs = ["--window", "dedicated", "--window-slot", windowSlot]
-    return execFileSync("opencli", ["browser", session, ...windowArgs, ...args],
+    return opencliRun(["browser", session, ...windowArgs, ...args],
       { encoding: "utf8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim()
   } catch (e) {
     const err = (e.stderr?.toString() || e.stdout?.toString() || e.message).trim()

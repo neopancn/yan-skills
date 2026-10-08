@@ -15,6 +15,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sessionSuffix } from "./lib-scene.mjs"
+import { opencliRun } from "./lib-opencli.mjs"
 
 const argv = process.argv.slice(2)
 const action = argv[0]
@@ -54,7 +55,7 @@ const requestedAccount = account, requestedProperty = property
 
 function cli(args, timeout = 30000) {
   try {
-    return execFileSync("opencli", ["browser", session, "--window", windowMode, ...(windowMode === "dedicated" && windowSlot ? ["--window-slot", windowSlot] : []), ...args],
+    return opencliRun(["browser", session, "--window", windowMode, ...(windowMode === "dedicated" && windowSlot ? ["--window-slot", windowSlot] : []), ...args],
       { encoding: "utf8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim()
   } catch (e) {
     const message = (e.stderr?.toString() || e.stdout?.toString() || e.message).trim()

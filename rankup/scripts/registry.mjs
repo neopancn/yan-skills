@@ -235,7 +235,7 @@ async function runCli() {
   // 就会开工（起服务 / 读文件 / 校验必填），走到那里再判就已经晚了。
   // 帮助文案直接取本文件头部注释，不另写一份——两份必然漂移。
   if (process.argv.slice(2).some((a) => a === '--help' || a === '-h')) {
-    const src = readFileSync(new URL(import.meta.url).pathname, 'utf8');
+    const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
     const block = src.match(/\/\*\*([\s\S]*?)\*\//)
       ? src.match(/\/\*\*([\s\S]*?)\*\//)[1].split('\n').map((l) => l.replace(/^\s*\* ?/, ''))
       : src.split('\n').slice(1).filter((l) => l.startsWith('//')).map((l) => l.replace(/^\/\/ ?/, ''));

@@ -16,6 +16,8 @@
  * 新增权限同意、密码与验证码仍停止；批量缺站分支未在本轮复测。
  */
 import { execFileSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
+import { opencliRun } from "./lib-opencli.mjs"
 
 const argv = process.argv.slice(2)
 if (!argv.length || argv.includes("--help") || argv.includes("-h")) {
@@ -31,7 +33,7 @@ if (!sites.length || sites.some(s => !/^[a-z\d-]+(?:\.[a-z\d-]+)+$/i.test(s)) ||
 }
 let opened = false
 function browser(...parts) {
-  return execFileSync("opencli", ["browser", session, "--window", "dedicated", ...parts],
+  return opencliRun(["browser", session, "--window", "dedicated", ...parts],
     { encoding: "utf8", timeout: 90000 }).trim()
 }
 function evalJs(source) { return browser("eval", `(()=>{${source}})()`) }
@@ -157,7 +159,7 @@ function selectOnly(missing) {
 function submitMissingSitemaps() {
   for (const domain of sites) {
     const site = `https://${domain}`
-    const script = new URL("./webmaster-sitemap.mjs", import.meta.url).pathname
+    const script = fileURLToPath(new URL("./webmaster-sitemap.mjs", import.meta.url))
     const status = execFileSync(process.execPath,
       [script, "bing", "status", "--site", site, "--session", session],
       { encoding: "utf8", timeout: 120000 })
