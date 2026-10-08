@@ -65,12 +65,21 @@ function dialogText() {
 }
 function accessible() {
   try { open(propertyUrl) } catch (error) {
-    if (!evalJs("return location.pathname").includes("/search-console/not-verified")) throw error
+    if (!evalJs("return location.pathname").includes("/not-verified")) throw error
     return false
   }
   const body = guard()
   sitemapListed = body.includes("sitemap.xml")
-  return /站点地图|Sitemaps/.test(body) && evalJs(`return new URL(location.href).searchParams.get("resource_id")===${JSON.stringify(property)} && !![...document.querySelectorAll('input')].find(e=>e.offsetParent!==null&&/输入站点地图网址|Enter sitemap URL/i.test(e.getAttribute("aria-label")||""))`).includes("true")
+  if (!/站点地图|Sitemaps/.test(body)) return false
+  // 2026-10-08：多属性账号 SPA 渲染慢，「添加站点地图」输入框（aria-label 或 placeholder，中英文站名不一）
+  // 常在首查时还没出现，原一次性判定把已验证资源误报成「未显示」。改为最多等 10 秒；
+  // 输入框仍未现但表格已渲染（resource_id 对且有状态列/ sitemap 行）也算可访问。
+  const inputCheck = `return new URL(location.href).searchParams.get("resource_id")===${JSON.stringify(property)} && !![...document.querySelectorAll('input')].find(e=>e.offsetParent!==null&&/输入站点地图网址|Enter sitemap URL/i.test((e.getAttribute("aria-label")||"")+(e.placeholder||"")))`
+  for (let i = 0; i < 10; i++) {
+    if (evalJs(inputCheck).includes("true")) return true
+    browser("wait", "time", "1")
+  }
+  return evalJs(`return new URL(location.href).searchParams.get("resource_id")===${JSON.stringify(property)} && /状态|Status|已发现的网页/.test(document.body.innerText||"")`).includes("true")
 }
 function visibleDomainInput() {
   return "[...document.querySelectorAll('input[aria-label=\"example.com\"]')].find(e=>e.offsetParent!==null)"
