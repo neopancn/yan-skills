@@ -3,6 +3,11 @@
 - Use the owner's truthful identity and product information.
 - Never fabricate comments, endorsements, metrics, addresses, or personas.
 - Require article-specific comments that add useful context; reject generic praise.
+- Build that article-specific body from the target page itself: give the model the
+  page's own title, meta description, and the opening few thousand characters of
+  visible body text, and require the draft to reference something only that
+  article says. Writing it from your own product description instead is how
+  generic praise gets produced. (local-fork 2026-10-12)
 - Stop on login requirements, CAPTCHA, Turnstile, ambiguous forms, multiple
   candidate forms, paywalls, or changed DOM fingerprints.
 - Default every OpenCLI browser session to background mode. Do not use foreground

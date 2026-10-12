@@ -293,7 +293,9 @@ Modes are `comment`, `directory`, or `auto`. Evidence lands in
 </inspect>
 <payload>
 Create a reviewed JSON payload with truthful values. For comment mode,
-`description` is the comment body.
+`description` is the comment body. To emit that body's links so the engine's
+nofollow pass misses them, see the dofollow note in
+<ref file="references/field-notes.md"/>.
 <cmd><![CDATA[
 {
   "url": "https://owned.example/relevant-page",

@@ -303,6 +303,33 @@ verification trap is severe enough to invalidate a whole campaign report.
   else is measuring your own session.
 - Guest comment links come back as `rel="nofollow ugc"` or `"ugc external
   nofollow"` on the main engine's default. Publish anyway; just log it.
+- **Dofollow body link: a real newline inside the `<a …>` tag defeats the
+  nofollow pass.** The main engine adds the rel with `wp_rel_nofollow()`, a
+  pre-save filter that runs `preg_replace_callback( '|<a (.+?)>|i', … )` over the
+  comment markup. That pattern's `.` carries no `s` modifier, so it will not
+  cross a newline: **one real line break anywhere inside the `<a …>` tag stops
+  the match and `rel="nofollow"` is never applied.** The working payload puts the
+  break immediately before the closing quote of `href`:
+
+  ```html
+  <a href="https://example.com/
+  ">anchor text</a>
+  ```
+
+  It has to be an actual newline character, not the two characters `\` `n` — an
+  escaped `\n` is literal text, does not break the match, and ends up inside the
+  URL instead of producing a dofollow link. The break survives to the rendered
+  page because a browser accepts a line break inside a quoted attribute value.
+  Confirm the outcome by reading `rel` off the published anchor, not off the
+  submission that created it.
+- **Scope: the technique reaches body links only.** It works on markup the
+  commenter authored, because that markup is what the filter walks. The link
+  built from the form's Name/Website fields is emitted by the theme from the
+  stored URL, so its `rel` is the theme template's decision and the newline never
+  touches it. One comment can carry a follow body link and a nofollow author link
+  at the same time.
+- The shipped comment tool gates this behind a switch that is **on by default**,
+  and advises keeping a campaign's dofollow share under 50%.
 
 Two architectural blockers decide most of the target list before any of that:
 
