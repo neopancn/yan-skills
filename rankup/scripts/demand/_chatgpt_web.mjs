@@ -85,11 +85,28 @@ export function closeSession(web) {
 /** 已开路径已实测；未验证的模式切换停止，避免未确认状态下发送。 */
 export function ensurePrivacySwitches(web) {
   // 2026-10-07 ChatGPT 改版适配：旧的 app-shell-header-context-menu-surface 表面已下线。
-  // 会话级个性化控制现在是输入框区一个 aria-label 为「个性化」/「不个性化」的按钮
-  //（点击弹出 menuitemradio：个性化 / 不个性化）；临时聊天仍是 button[aria-label="关闭临时聊天"]。
+  // 会话级个性化控制是输入框区一个「个性化」/「不个性化」按钮（点击弹 menuitemradio）。
+  // 2026-10-13 再改版实测：进入 ?temporary-chat=true 先弹「临时聊天→继续」确认框；「个性化」
+  // 按钮 aria-label 变空、状态文字落到 innerText；临时聊天声明改成「可使用记忆、插件和自定义指令，
+  // 但不会显示在你的历史记录中」，旧「不会.*记忆」正则永不命中 → privacy-switch 假阴性。
+  // 严格路径（未确认账号）仍要求切到「不个性化」；用户传 --memory-clean 时接受
+  // 临时聊天+「不入历史记录」声明放行（账号无记忆由用户确认，2026-10-13 探测回答「没有」）。
+  const dismissJs = `(async () => {
+    const d = document.querySelector('[role="dialog"]');
+    if (!d) return JSON.stringify({dismissed:false});
+    const b = [...d.querySelectorAll('button')].find(x => /^(继续|Continue)$/.test(x.innerText.trim()));
+    if (!b) return JSON.stringify({dismissed:false});
+    const rect = b.getBoundingClientRect();
+    const options = {bubbles:true,clientX:rect.x + rect.width / 2,clientY:rect.y + rect.height / 2,button:0,pointerType:'mouse',isPrimary:true};
+    for (const type of ['pointerover','pointerenter','pointerdown','mousedown','pointerup','mouseup','click']) b.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, options));
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return JSON.stringify({dismissed:!document.querySelector('[role="dialog"]')});
+  })()`;
+  browserCommand(web, ['eval', dismissJs], { timeoutS: 15 });
+  const modeOf = (b) => (b.getAttribute('aria-label') || '').trim() || b.innerText.trim();
   const modeReadJs = `(() => {
-    const btn = [...document.querySelectorAll('button')].find(b => /^(个性化|不个性化)$/.test((b.getAttribute('aria-label')||'').trim()));
-    return btn ? btn.getAttribute('aria-label').trim() : null;
+    const btn = [...document.querySelectorAll('button')].find(b => /^(个性化|不个性化)$/.test((b.getAttribute('aria-label') || '').trim() || b.innerText.trim()));
+    return btn ? ((btn.getAttribute('aria-label') || '').trim() || btn.innerText.trim()) : null;
   })()`;
   const readState = (wait = false) => parseEvalJson(browserCommand(web, ['eval', `(async () => {
     if (${wait}) {
@@ -109,7 +126,8 @@ export function ensurePrivacySwitches(web) {
         const options = {bubbles:true,clientX:rect.x + rect.width / 2,clientY:rect.y + rect.height / 2,button:0,pointerType:'mouse',isPrimary:true};
         for (const type of ['pointerover','pointerenter','mouseover','pointerdown','mousedown','pointerup','mouseup','click']) el.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, options));
       };
-      const button = [...document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label')||'').trim() === '个性化');
+      const label = b => (b.getAttribute('aria-label') || '').trim() || b.innerText.trim();
+      const button = [...document.querySelectorAll('button')].find(b => label(b) === '个性化');
       if (!button) return JSON.stringify({ok:false});
       click(button);
       await new Promise(resolve => setTimeout(resolve, 400));
@@ -117,18 +135,23 @@ export function ensurePrivacySwitches(web) {
       if (!item) return JSON.stringify({ok:false});
       click(item);
       await new Promise(resolve => setTimeout(resolve, 600));
-      const btn = [...document.querySelectorAll('button')].find(b => /^(个性化|不个性化)$/.test((b.getAttribute('aria-label')||'').trim()));
-      return JSON.stringify({ok: btn?.getAttribute('aria-label').trim() === '不个性化'});
+      const btn = [...document.querySelectorAll('button')].find(b => /^(个性化|不个性化)$/.test((b.getAttribute('aria-label') || '').trim() || b.innerText.trim()));
+      return JSON.stringify({ok: btn ? ((btn.getAttribute('aria-label') || '').trim() || btn.innerText.trim()) === '不个性化' : false});
     })()`], { timeoutS: 15 }).stdout);
     if (switched?.ok) state = readState(true);
-    else state = null;
+    else state = { ...state, switchAttempted: false };
   }
-  const notice = (state?.text || '').split('\n').filter(line => /不会.*记忆|不.*使用.*记忆|won.t.*memor|doesn.t.*memor/i.test(line)).join('\n');
-  if (!state?.temporary || !notice || state.mode !== '不个性化') {
+  const lines = (state?.text || '').split('\n');
+  const memoryNotice = lines.filter(line => /不会.*记忆|不.*使用.*记忆|won.t.*memor|doesn.t.*memor/i.test(line)).join('\n');
+  const historyNotice = lines.filter(line => /不会显示在.*(历史|记录)|won.t.*appear.*in your (chat )?history/i.test(line)).join('\n');
+  const notice = [memoryNotice, !memoryNotice && web.memoryClean ? historyNotice : ''].filter(Boolean).join('\n');
+  const modeOk = state?.mode === '不个性化' || (web.memoryClean && state?.temporary && !!notice);
+  if (!state?.temporary || !notice || !modeOk) {
     return { ...failedPage(web), ok: false, failure: 'privacy-switch',
-      error: `隐私开关未确认：临时聊天=${!!state?.temporary && !!notice}，个性化模式=${state?.mode || '读不到'}；未发送问题。` };
+      error: `隐私开关未确认：临时聊天=${!!state?.temporary && !!notice}，个性化模式=${state?.mode || '读不到'}，账号干净确认=${!!web.memoryClean}；未发送问题。` };
   }
   web.temporaryNotice = notice;
+  web.privacyNote = state.mode === '不个性化' ? '不个性化已确认' : `记忆干净账号放行（模式=${state.mode}，memory-clean 用户确认）`;
   return { ok: true, mode: state.mode, temporaryNotice: notice };
 }
 
@@ -183,7 +206,7 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
     if (!opened.ok) return opened;
     notice = web.temporaryNotice;
   }
-  const state = natural ? parseEvalJson(browser('eval', `JSON.stringify({count:document.querySelectorAll('[data-message-author-role="assistant"]').length,lastText:(()=>{const a=[...document.querySelectorAll('[data-message-author-role="assistant"]')];return a.length?a[a.length-1].innerText:''})(),blocked:/验证码|captcha|verify you are human|too many requests|usage limit|reached the limit|达到.*上限/i.test(([...document.querySelectorAll('[data-message-author-role="assistant"]')].reduce((t,a)=>t.split(a.innerText).join(''),document.body.innerText))),auth:!document.querySelector('[contenteditable="true"][role="textbox"]') && /登录|log in|sign in/i.test(document.body.innerText)})`).stdout) : null;
+  const state = natural ? parseEvalJson(browser('eval', `JSON.stringify({count:document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]').length,lastText:(()=>{const a=[...document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]')];return a.length?a[a.length-1].innerText:''})(),blocked:/验证码|captcha|verify you are human|too many requests|usage limit|reached the limit|达到.*上限/i.test(([...document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]')].reduce((t,a)=>t.split(a.innerText).join(''),document.body.innerText))),auth:!document.querySelector('[contenteditable="true"][role="textbox"]') && /登录|log in|sign in/i.test(document.body.innerText)})`).stdout) : null;
   if (state?.blocked || state?.auth) return { ...failedPage(web), ok: false, failure: state.auth ? 'auth' : 'rate-limit', error: '临时页出现登录、验证码或限流提示', durationMs: Date.now() - t0 };
   const before = state?.count || 0;
   // ChatGPT 长对话会把旧消息虚拟化出 DOM，assistant 消息数可能不增反降（2026-10-07 实测
@@ -194,12 +217,19 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
     let r = browser(...args);
     // 多轮对话页可能同时存在两个 contenteditable 文本框；选择器歧义时改用 ChatGPT 输入框固定 id 重试一次。
     if (r.status !== 0 && /selector_ambiguous/.test(r.stderr || r.stdout || '') && args[0] === 'type') r = browser('type', '[contenteditable="true"][role="textbox"]', prompt, '--nth', '1');
+    // 2026-10-13 改版实测：data-testid="send-button" 下线；退回语义定位（可访问名含 发送/Send）。
+    if (r.status !== 0 && args[0] === 'click') {
+      for (const name of ['发送', 'Send']) {
+        r = browser('click', '--role', 'button', '--name', name);
+        if (r.status === 0) break;
+      }
+    }
     if (r.status !== 0) return { ...failedPage(web), ok: false, failure: classifyWebSend(r.stderr || r.stdout), error: (r.stderr || r.stdout).trim().slice(-300), durationMs: Date.now() - t0 };
   }
   while (Date.now() < deadline) {
     const r = browser('eval', `JSON.stringify((() => {
       const text = document.body.innerText;
-      const answers = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
+      const answers = [...document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]')];
       const nonAnswer = answers.reduce((t,a)=>t.split(a.innerText).join(''),text);
       const answer = answers.pop();
       const busy = !!document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]');
@@ -218,7 +248,7 @@ export async function sendTurn({ prompt, timeoutS, web, continuation = false, na
   }
   // 超时取证：回答到底来没来（assistant 消息数）、输入框还在不在、页面尾部是什么——
   // 否则 timeout 无法区分「没发出去 / 在浏览没答完 / 答了但选择器没读到」（2026-10-07 实测需要）。
-  const probe = parseEvalJson(browser('eval', `JSON.stringify({n:document.querySelectorAll('[data-message-author-role="assistant"]').length,composer:!!document.querySelector('[contenteditable="true"][role="textbox"]'),busy:!!document.querySelector('[data-testid="stop-button"],button[aria-label*="停止"]'),tail:(document.body.innerText||'').slice(-250)})`).stdout);
+  const probe = parseEvalJson(browser('eval', `JSON.stringify({n:document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]').length,composer:!!document.querySelector('[contenteditable="true"][role="textbox"]'),busy:!!document.querySelector('[data-testid="stop-button"],button[aria-label*="停止"]'),tail:(document.body.innerText||'').slice(-250)})`).stdout);
   return { ...failedPage(web),ok:false,failure:'timeout',error:`临时对话在 ${timeoutS} 秒内未读到完整回答 | probe=${JSON.stringify(probe)}`,durationMs:Date.now()-t0 };
 }
 

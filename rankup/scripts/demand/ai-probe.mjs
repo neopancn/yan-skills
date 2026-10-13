@@ -143,6 +143,14 @@
  * 另：geo-loop.mjs 默认强制 AI_PROBE_WEB_WINDOW=dedicated，CLI <1.10 需外部设
  * isolated 降级（oc/broker 已统一走 lib-opencli 的 Windows 安全 spawn）。
  *
+ * ✅ 已修复（2026-10-13，ChatGPT 临时聊天再改版）：进入 ?temporary-chat=true 会先弹
+ * 「临时聊天→继续」确认框（ensurePrivacySwitches 开头自动点掉）；「个性化」按钮 aria-label
+ * 变空、状态文字移到 innerText（读取已改双路径）；临时聊天声明改成「可使用记忆…但不会显示在
+ * 你的历史记录中」，旧「不会.*记忆」正则必失效 → privacy-switch 假阴性。现在 --memory-clean
+ * 时接受「临时聊天 + 不入历史记录」声明放行；未确认账号仍要求切到「不个性化」。
+ * 注：新版「不个性化」只声明关闭插件与自定义指令，是否用记忆由账号 Memory 设置决定——
+ * 干净与否要用「你记得我什么」探测实证（2026-10-13 msht4gxm 实测回答「没有」）。
+ *
  * 实测记录（2026-09-29，本机 codex-cli 0.158.0 / gpt-6-sol low / 并发 3；原始证据留在仓库外，不随 skill 分发）：
  *   - codex 通道：三个词（付费工具类、游戏类、平台类各一）各 N×3 + K×3 + C×1，共 21 次全部成功，
  *     单次 50–82 秒（均值约 61 秒），无 402/429；另用 --fetch-google 跑了一遍端到端小样（各 1 次）。
@@ -715,7 +723,7 @@ async function main() {
   }
   let lastStart = 0; let abortAll = null;
   // 读会话数据用的 opencli browser 会话：描述性名字（不用 $$/随机串，方便一眼认出、也避免同名并发——同名会话别给两个任务用）
-  const webState = webChannel ? { session: String(args['web-session'] || 'ai-probe-web'), ready: false, opened: false, keepOpen, keepAlive: keepOpen || multiTurn, temporary: multiTurn || (args['no-temporary'] !== true && args.temporary !== false) } : null;
+  const webState = webChannel ? { session: String(args['web-session'] || 'ai-probe-web'), ready: false, opened: false, keepOpen, keepAlive: keepOpen || multiTurn, temporary: multiTurn || (args['no-temporary'] !== true && args.temporary !== false), memoryClean: memoryFlag } : null;
 
   if (webState) manageSession(webState);
 
