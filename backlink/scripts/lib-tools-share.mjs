@@ -8,7 +8,8 @@
  * 为什么要抽成 lib：这套启动流程有四个必须踩对的细节（会话焊死、卡片是 logo 图、
  * nb-select 水合晚、节点会挂），任何一个抄漏都表现为「脚本坏了」而不是「启动失败」。
  * 之前 similarweb-query.mjs 自己写了一份简化版启动器，漏掉了其中三个，
- * 于是稳定报 shared_proxy_blank_or_unavailable。**要用就用这一份。**
+ * 于是稳定报 shared_proxy_blank_or_unavailable（该脚本现已改走官方 Pro 同源
+ * API，不再经面板）。**面板脚本要用就用这一份。**
  *
  * 本模块从不输入密码。面板未登录就明确报错并停下，登录是机主自己在自己的 Chrome 里做的事。
  * 已验证 2026-08-26：同一 session 已在目标工具页时必须原地复用；重复打开 dashboard
@@ -753,10 +754,9 @@ function windowPathDrift(requestedUrl, landedUrl) {
  * 或 null（这条路由的末段和 query 里都找不到窗口）。两条通道都能认出窗口时，
  * **被改写的那条优先**——报出改写是这个机制存在的全部理由；都没被改写就以路径为准。
  *
- * ⚠️ **已知残留缺口**：7 个 gotoInTool 调用点里只有
+ * ⚠️ **已知残留缺口**：所有 gotoInTool 调用点里只有
  * `rankup/scripts/demand/payment-referrers.mjs` 把 `routeWindow` 写进了输出，
- * 其余 6 个（similarweb-query / similarweb-batch / similarweb-keywords /
- * semrush-* 等）拿到返回值就丢掉。它们目前只在窗口被改写时收到一行 stderr 警告，
+ * 其余（semrush-* / tools-share-* 等）拿到返回值就丢掉。它们目前只在窗口被改写时收到一行 stderr 警告，
  * **输出文件里没有窗口字段**，下游无从判断那些数字是哪个时间窗口的。
  * 补的时候照 payment-referrers 的字段抄：`requestedWindow` / `window` /
  * `windowRewritten` / `windowSource`。

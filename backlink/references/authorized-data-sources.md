@@ -164,453 +164,39 @@ Use Similarweb to:
 
 Do not treat estimated traffic as proof of link quality or causal SEO impact.
 
-Use `scripts/similarweb-query.mjs` for repeatable domain research through this
-owner-authorized session. It performs DOM-based navigation and readiness
-polling; it does not use screen coordinates or expose session cookies.
+Use `scripts/similarweb-query.mjs` for repeatable domain research. The **entire
+Similarweb channel reads the official Pro same-origin JSON API**
+(`pro.similarweb.com`), from an already logged-in Pro page's own context: it
+`fetch`es each report's endpoint and does **not** render the page, scroll, or read
+the DOM. The old shared-panel route is gone — its login expired 2026-10-13 — so
+nothing Similarweb-shaped depends on a visible hydrated page any
+more.
 
 ```bash
 node scripts/similarweb-query.mjs --domain example.com --report performance \
   --out .backlink/similarweb-example.com.json
 ```
 
-The app can take 20–60 seconds to initialize. A completed report with N/A or no
-similar sites is evidence of sparse Similarweb coverage, not a script failure.
-Traffic, rank, channel, and competitive-site values remain directional and
-time-sensitive.
+`--report` is one of eight: `performance`, `channels`, `similar-sites`,
+`audience-geo`, `site-keywords`, `audience-interests`, `audience-overlap`
+(`--compare` is required for `audience-overlap`), `audience-demographics`
+(`--gender`, `--age`). `--traffic-tab` (only `site-keywords`) accepts `organic`
+or `paid` — there is **no `total`**, because the API answers any non-Organic/Paid
+`SourceType` with a 400. `--window` defaults to `background` (a same-origin
+`fetch` needs no visible tab); `--session` is ignored and the session is pinned
+to `similarweb-nav`; `--profile` names the Browser Bridge profile holding the Pro
+login (default `msht4gxm`). The API pins the window itself
+(`isWindow=true&latest=28d|6m`), so the scripts do **no date arithmetic** and
+there is no rendered window that can disagree with the request.
 
-**Scope evidence, direction fields, and coverage (2026-09-13 audit fix).** The
-report page's own "变动" (change) columns encode up/down through an SVG icon
-plus color, not through any arrow character in the text — reading only the
-text used to make every change value come out non-negative. `clicksChangePercent` /
-`rankChangePercent` / geo `changePercent` are now `null` with a sibling
-`...DirectionUnknown: true` flag whenever the direction can't be resolved from
-text glyphs or the DOM hint (`data-icon` / computed color) captured alongside
-it — never silently defaulted to positive. The same-tab session can also carry
-a stale date-range window over into the next navigation even though the
-request asked for a different one; every report now returns a `scopeEvidence`
-object (`windowLabel`, `windowRequested`, `windowMatchesRequest`,
-`windowUnverified`, plus country/device observation flags) built from what the
-page itself renders, cross-checked against the navigation's own landed-route
-evidence (`navRouteWindow`).
-
-**A confirmed window mismatch stops the query outright (2026-09-13 second
-review), it is not just noted and passed through.** `similarweb-query.mjs`
-detects this the moment the report settles (no extra waiting, and no reliance
-on a timeout) and reports `status: "scope-mismatch"` with a non-zero exit
-code; the parsed values are moved to `unconfirmedMetrics` / `unconfirmedGeo` /
-`unconfirmedKeywords` instead of the normal fields, so a caller that only
-checks the normal fields for presence cannot mistake widened-window data for
-the requested window. `similarweb-batch.mjs` marks only the affected JSONL row
-this way (`stopReason: "window-scope-mismatch"`, values under
-`unconfirmedTotalVisits` etc.) — other domains in the same run are unaffected,
-and because that `stopReason` is not in the resumable-complete set, a later
-`--domains-file` run retries it automatically. `similarweb-keywords.mjs` does
-the same per seed (`unconfirmedRows` instead of `rows`). Since Similarweb
-legitimately widens a small site's window on its own, all three scripts accept
-`--accept-window-fallback` to treat the rendered window as authoritative and
-proceed normally (still labelled, via `status: "ok-window-fallback-accepted"`
-and a `windowActual` field, so it is never confused with a request that
-matched outright). Anything that could not be independently confirmed but was
-not a confirmed mismatch — window text unreadable, the "全球"/"所有流量"
-selector text unreadable, `audience-geo`'s row-count-vs-header-total check
-inconclusive, or the (currently unconfirmed) loading-indicator DOM check —
-surfaces as `status: "ok-unverified"` plus a `warnings` array naming each
-unverified dimension, and a non-zero exit code, rather than looking identical
-to a fully-confirmed `"ok"` result. The audience-geo tab has no country
-selector at all, so `country` in its URL is a positional parameter only;
-`scopeEvidence.countryApplicable` is `false` for that report and is not the
-same signal as "unverified". Table-shaped reports (`audience-geo`,
-`site-keywords`) also carry `rowsExpected` / `rowsCaptured` / `truncated` so a
-caller can tell a fully-read table from one still batching in more rows; when
-the page's own row total can't be parsed, that is reported as
-`rowsCompletenessUnverified` (feeding into `ok-unverified`) rather than
-treated as confirmed-complete.
-Output additionally carries a static `notCovered` list of report sections the
-scripts do not extract yet (chart panels, some audience tabs) — see
-`similarweb-query.mjs`'s `NOT_COVERED` map for the current list and reasons.
-
-**2026-09-13 second review, confirmed by live DOM (not inference).** The
-"变动" (change) direction turned out to be **two distinct real mechanisms**,
-not one mechanism guessed two ways: the `.swReactTable-column` family
-(`audience-geo`, and the `channels` report's newly-added detail table,
-`channelDetail`) marks direction via a wrapper `div.changePercentage` class
-(`positive`/`negative`) with no SVG involved at all; the Ant Design row table
-(`site-keywords`) carries a precise signed ratio in
-`[data-automation="cell-value"]`'s `data-automation-value` attribute, with an
-`.SWReactIcons[data-automation-icon-name]` ("arrow-up"/"arrow-down") and an
-icon fill color (`#4FBF40` up, `#FF442D` down — both directions now confirmed,
-not just the "red = down" half) as fallbacks; a `"NEW"` value
-(`data-automation-value="New"`, a keyword with no prior-period data) is a
-third state, not a placeholder and not an unresolved direction. The
-`.app-loader`/`.sw_loader`/`.first-time-loader` classes present in the DOM
-turned out to be a one-time account-onboarding overlay unrelated to report
-loading (zero-size once past first boot); `audience-geo` and `channels` were
-specifically tested for a per-table loading indicator and confirmed to have
-none, so `loadingIndicatorUnverified` no longer applies to those two —
-`site-keywords`'s main table still carries it (untested this round). Its 5
-stat cards (`statCards`: Cannibalization / long-tail / SERP-opportunity /
-high-traffic / low-potential) do have a confirmed per-card signal instead
-(`data-automation-button-loading`), extracted via `deriveSiteKeywordStatCards`.
-Full live-DOM notes: see the `similarweb-live-dom.md` scratchpad referenced in
-the corresponding session record.
-
-**2026-09-13 third review (fully offline, no browser).** Three new report
-values reuse the confirmed structures above: `--report audience-interests`
-(the "cross-visited sites" table, same `.swReactTable-column`/mechanism-A
-framework as `audience-geo`), `--report audience-overlap` (a text block, not a
-table — "average unique visitors" per site plus a total), and
-`--report audience-demographics` — the last one is deliberately thin: the one
-live sample for that tab had incomplete data, so instead of a full extractor
-it ships a three-way signal (section title found / confirmed empty text
-observed / neither) and is documented as low-confidence rather than pretending
-otherwise. Also fixed: `suspectColumns:["点击量"]` on `site-keywords` traced to
-a real bug — the clicks/share cell regex didn't accept the `< 0.01%`
-below-threshold form Similarweb uses for long-tail rows (over half of a real
-75-row page), so the whole column was mis-flagged; fixed and regression-tested.
-Same live-run's "LOST" value (a keyword that dropped out of rankings — the
-mirror of `"NEW"`) was found miscounted as a parse failure; also fixed.
-**Scroll-to-bottom, requested but not yet confirmable:** unlike a known Semrush
-issue where a report requires scrolling all the way down before every section
-loads, four already-completed live runs of `similarweb-query.mjs` (no scroll
-code existed) captured full bottom-of-page content on the first read —
-evidence, not assumption, that these specific pages don't gate content on
-scroll position. As a defensive measure anyway, every table-shaped report now
-attempts a generic scroll-to-bottom (window plus any element that looks
-internally scrollable) and reports what it found in `scrollEvidence`, but
-because the real scroll container was never confirmed live, that evidence is
-**not** wired into the pass/fail gate — a wrong guess there would turn four
-currently-reliable reports into reliable timeouts instead. Consistent with
-this file's "never claim confirmed without evidence" rule, those reports
-carry `scrollUnverified: true` unconditionally until a live session confirms
-the mechanism, which keeps `status` at `ok-unverified` rather than `ok` even
-when everything else checks out.
-
-**2026-09-13 fourth review (live, Chrome exclusive; ≤6 verification runs on
-howolddoyoulook.com plus one read-only comparison-domain check, not persisted
-in this repo).** The real scroll container is now confirmed:
-`.sw-layout-scrollable-element` (non-hashed class, present on
-performance/audience-geo/audience-interests/channels), not `window` — this
-layout's `window.scrollY`/`document.documentElement.scrollHeight` are always
-pinned to the viewport height, so a window-based bottom check would always be
-a false positive. `SCROLL_TO_BOTTOM` now scrolls that real element and records
-`{containerFound, containerSelector, scrollTop, scrollHeight, clientHeight,
-atBottom, hidden, visibilityState}` on every poll into a new `scrollTrace`
-array (plus the final read's `scrollEvidence`), following the same shape as
-`lib-semrush-overview.mjs`'s scroll instrumentation (read-only reference, not
-copied). **This still stops short of a hard gate.** Direct evidence (fresh
-tab, zero scroll, `hidden: true`) showed full bottom-of-page content already
-present on two pages — the opposite of Semrush's IntersectionObserver-gated
-case — and no hidden-vs-visible controlled experiment could be run this round
-(the exploration tool's tab is permanently `document.hidden === true`,
-unaffected by `open -a`/`osascript activate`). So `scrollUnverified` stays
-unconditionally `true` for the same four gated reports — not because the
-selector is unconfirmed (it is), but because the causal claim "hidden tabs
-block this specific page's lazy content" has real counter-evidence and no
-controlled test yet. What *did* ship as a genuinely low-risk, evidence-aligned
-change: `windowMode` now forces `foreground` for
-`audience-geo`/`channels`/`audience-interests`/`site-keywords` regardless of
-`--window`, matching the Semrush precedent on the same `launchTool`
-infrastructure. A production run of `--report audience-geo` this round (real
-`opencli`-driven Chrome, not the exploration tool) recorded `scrollTrace` with
-`hidden: false, visibilityState: "visible", atBottom: true` on every poll —
-one supporting data point that forcing foreground does yield a visible tab in
-production, still not a substitute for a real A/B.
-
-**site-keywords loading indicator: confirmed, no longer a candidate.**
-`.ant-spin-spinning`, `.ant-table-placeholder`, and `[aria-busy="true"]` were
-caught firing together with `rows: 0` mid-load and clearing together once
-`rows > 0`; this is now wired into the read loop as a real blocking gate
-(a fingerprint read returns `null` — "keep polling" — while any of them is
-present), and `loadingIndicatorUnverified` no longer applies to
-`site-keywords`. It still applies to `audience-interests`/`audience-overlap`/
-`audience-demographics`, which were not tested for an independent loading
-indicator this round.
-
-**A real, previously-latent pagination bug.** `audience-geo`/`channels`/
-`audience-interests` (the `.swReactTable-column` family) turned out to
-paginate too, once past roughly 100 rows — an "out of N" footer
-(`SWReactTableWrapperFooter-*` hashed class, stable "out of \d+" text) rather
-than Ant Design's pager. Every `howolddoyoulook.com` table stayed ≤52 rows so
-this never surfaced before; a large comparison domain checked read-only this
-round had 38,818 interest-graph rows against ~100 rendered per page, and the
-old `RENDER_SIGNAL` (`rowsRead >= totalRowsOnPage`, where the total is the
-site-wide header count) could never be satisfied — any large-enough domain
-would time out as `inconclusive` forever. Fixed: a `MULTI_PAGE_FOOTER` match
-now also counts as a legitimate stopping point (page 1 of many, truncated but
-not "still loading"), OR'd into all three affected `RENDER_SIGNAL` functions.
-
-**audience-interests fixes from the same comparison-domain check (domain name
-not persisted here or in any repo file; fixtures use `example-site.test`).**
-`crossVisit` is a percentage (`"86.51%"`), not a plain number as assumed last
-round — fixed to parse with `{percent: true}`. `AdSense` is a conditional
-column present only on some sites (7 headers on howolddoyoulook.com, 6 on the
-comparison domain) — moved out of the required `wanted` map into a standalone
-optional lookup so its absence no longer produces a false `missingColumns`
-alarm.
-
-**audience-demographics: upgraded from a 3-state signal to real field
-extraction**, using the comparison domain's full (English-labelled, despite
-an otherwise Chinese UI) structure: `Male\n(\d+)%\nFemale\n(\d+)%` →
-`genderMalePercent`/`genderFemalePercentConfirmed`; six percentage lines
-positionally paired with the six age-bracket labels (`18-24` … `65+`) →
-`ageDistribution`; and the "域/竞争对手份额/受众群体份额/访问持续时间/页面数/
-访问/跳出率" segment table → `segment` (reads the two filter lines before the
-header, then six data-row lines after). The old Chinese-label heuristic
-(`hasGenderSplit`/`genderFemalePercent`) is kept as a fallback signal, not
-replaced — the confirmed structure is additive. All three fragility points
-(English labels despite Chinese UI, positional not label-adjacent age
-pairing, segment table shows only the currently-selected dropdown
-combination) are documented next to `deriveAudienceDemographicsSignal`.
-
-**site-keywords sub-tab implemented: `--traffic-tab total|organic|paid`**
-(default `total`, unchanged from before). The three tabs are a `react-tabs`
-list (`li[data-automation-item="total"|"organic"|"paid"]`, confirmed live) —
-but the script does **not** click them. Clicking was tested and silently
-flips the requested window to `6m` as a side effect of that interaction path
-(reproduced even switching into `total`/`organic`, not just `paid`);
-constructing the destination URL directly with
-`selectedPageTab=Total|Organic|Paid` and cold-navigating avoids that
-entirely, confirmed for both `total` (pre-existing) and `organic` (this
-round) staying at the requested `1m`. `paid` is the one genuine exception:
-even a direct URL requesting `1m` gets silently upgraded to `6m` by the page
-itself, every time (howolddoyoulook.com has no paid keywords at all, so the
-result is that report's own legitimate "似乎没有足够的数据" empty-state text,
-not an error) — rather than surface that as a `scope-mismatch` on every paid
-run, the script's requested window for `paid` is itself set to `6m`, so
-`windowActual` and `windowRequested` agree honestly instead of needing
-`--accept-window-fallback` as a permanent workaround. Both `total` and
-`organic` were verified against the real 75-row page that originally
-triggered the `suspectColumns`/`"LOST"` bugs (see above) and came back clean
-(`suspectColumns: []`, `partialLossColumns: []`) on both tabs in this round's
-live runs. `trafficTab` is echoed in the output for `site-keywords` only.
-
-**2026-09-13 fifth review (offline design, then live-confirmed same day once
-Chrome was free; two mid-round scope corrections from the coordinator, both
-applied).** The `ok-unverified`-forever problem this created for the four
-scroll-gated reports now has an off switch: `similarweb-query.mjs` gained
-`SCROLL_AB_CONCLUSIONS`, a per-report table (`{concluded, verdict, date,
-notes}`) plus a pure `scrollGateSatisfied()` function wired into each affected
-`RENDER_SIGNAL` (including a new entry for `site-keywords`, which previously
-had none). Once a report's entry is flipped to `concluded: true`,
-`scrollUnverified` stops firing regardless of which verdict — `'not-needed'`
-because the pre-existing row/pagination/loading-placeholder signals already
-cover completeness, `'needed'` because reaching that RENDER_SIGNAL check at
-all now requires a confirmed stopped-at-bottom-and-visible read.
-
-**All four entries are now `concluded: true` / `'not-needed'`**, switched
-after a real `similarweb-scroll-ab.mjs --activate-chrome true` run against
-howolddoyoulook.com for each report: zero-scroll and scrolled-to-bottom
-returned identical row counts and `scrollHeight` in all four cases (11/51/
-19/75 rows; 2004/2898/1581/3837px), so content does not gate on scroll
-position for this site. Explicitly logged sample limitation (in each entry's
-`notes`, not just here): one small site, 11–75 rows, well under the ~100-row
-threshold where these tables switch to pagination instead of more scrolling —
-whether a *large* site's *single page* ever lazy-mounts rows was not tested.
-The `channels` conclusion carries the least risk from that gap (its channel
-taxonomy is a small fixed enum, unrelated to site size); the other three
-inherit a partial backstop from the pre-existing row-count/pagination-footer
-signals, which should catch an incomplete read as `inconclusive` even if this
-particular conclusion turns out not to generalize to a much larger single
-page. `audience-interests`'s run happened to catch `hidden: true` in both
-groups (the foreground request didn't actually win focus that time) and still
-matched — an unplanned but consistent data point, not a designed hidden-vs-
-visible test.
-
-**`backlink/scripts/dev/similarweb-scroll-ab.mjs`** does the zero-scroll-vs-
-scrolled-to-bottom comparison, reusing `lib-tools-share.mjs`'s real
-`launchTool`/`gotoInTool`/`captureStable` (not the hidden-by-construction
-exploration tool) and the already-tested `derive*Rows` row counts from
-`lib-similarweb.mjs` instead of a second row-counting implementation; it also
-now surfaces `subscription` (quota/expiry) like the main script does, added
-after the first live runs showed the diagnostic output was missing it.
-Verdicts are never written back automatically — the table above was edited by
-hand after reading each run's output.
-
-**Live-run confirmation, same session, official `similarweb-query.mjs`
-against howolddoyoulook.com (global scope):** `channels` and `site-keywords`
-now come back `status: "ok"` with zero warnings — the scroll dimension was
-their only remaining gap. `audience-geo` and `audience-interests` still come
-back `ok-unverified`, but for reasons unrelated to scrolling:
-`page_hidden_during_capture` fired on both (a real hidden read was caught
-mid-poll, independent of the AB conclusion, exactly the safety net's intended
-job), and `audience-interests` additionally still carries
-`loading_indicator_unverified` (never confirmed for that tab, untouched by
-this round). One `channels` attempt hit a transient
-`shared_proxy_blank_or_unavailable`-style node timeout unrelated to this
-work and succeeded on retry.
-
-**Mid-round correction: stop auto-raising Chrome without being asked.** The
-existing `windowMode` auto-foreground for `audience-geo`/`channels`/
-`audience-interests`/`site-keywords` (round 3) was reported to visibly steal
-OS focus during normal use. `similarweb-query.mjs` now gates that forcing
-behind `--activate-chrome` (same name as the Semrush scripts' switch, though
-the underlying mechanism differs — this flips the `window` argument passed
-into the shared `launchTool`, not a separate `open -a` call): default stays
-`true` (current behavior preserved) until told to flip the default; passing
-`false` drops back to the plain `--window`-controlled default. Turning it off
-does **not** relax the correctness bar — a new `pageWasHiddenDuringCapture`
-flag inspects every polled `scrollTrace` entry (not just the final one) and,
-if any read caught `document.hidden === true`, forces a dedicated
-`page_hidden_during_capture` warning independent of `scrollUnverified`/the
-AB-conclusion state, so a report can never look confirmed-clean after a run
-that is known to have gone hidden. The new `similarweb-scroll-ab.mjs` was
-written after this correction landed and never had the forcing behavior in
-the first place — it defaults `--activate-chrome` to `false` (unlike the main
-script's preserved-default `true`), since adding a fresh instance of the
-just-reported pattern to brand-new code would be worse than not testing
-visibility by default.
-
-**2026-09-14: `--activate-chrome` default flips to `false`, and `windowMode`
-stops being a foreground/background binary.** Two changes, driven by a
-focus-stealing audit that measured `--activate-chrome true` (the then-default)
-issuing 31–32 `open -a`/foreground-window requests in one normal run:
-
-1. `opencli-core.mjs`/`lib-tools-share.mjs` used to collapse any `windowMode`
-   that wasn't exactly `'foreground'` down to `'background'` — `active` and
-   `isolated` were silently unreachable through those three call sites, even
-   though opencli itself has always supported all four
-   (`foreground|active|background|isolated`; see opencli's own `src/runtime.ts`
-   `BrowserWindowMode`). Fixed to a single `normalizeWindowMode()` pass-through
-   used by all three, plus `reuseDecision()`'s hidden-tab relaunch check now
-   also fires for `active` (not just `foreground`) since both are "caller wants
-   this tab visible" requests, unlike `background`/`isolated`.
-2. `similarweb-query.mjs`'s own `resolveWindowMode()` default flips from
-   `background` to `active` (tab selected, un-throttled, but never raises the
-   OS window), and `--activate-chrome` itself defaults to `false` (was `true`).
-   `FOREGROUND_FORCED_REPORTS` still exists for the four scroll-gated reports,
-   but only fires when a caller explicitly passes `--activate-chrome true` —
-   the round-5 scroll A/B evidence above already showed `active`-level
-   visibility is sufficient for all four, so the stronger, focus-stealing
-   `foreground` default is no longer needed. `page_hidden_during_capture` keeps
-   independently forcing `ok-unverified` for `audience-geo`/`channels`/
-   `site-keywords` (their round-5 A/B samples were all captured under
-   `hidden:false`, so they say nothing about the hidden case) — the one
-   exception is `audience-interests`, whose round-5 sample was captured with
-   **both** A/B groups at `hidden:true` and matching row counts (see above:
-   "an unplanned but consistent data point"), which is exactly the kind of
-   direct hidden-case evidence needed to relax it; output now carries
-   `hiddenCaptureRelaxed` per report so this isn't silent. `similarweb-batch.mjs`
-   and `similarweb-keywords.mjs` get the same `active` default via a shared
-   `resolveSimilarwebWindowMode()` in `lib-similarweb.mjs` — the latter had a
-   dead-on-arrival bug fixed as part of this change: it used to pass the whole
-   `flags` object into `launchTool({ tool, session, flags, ... })`, a key
-   `launchToolInner` never destructures, so `--window` never reached opencli at
-   all and every run was an implicit `background`.
-3. `semrush-overview.mjs`'s own `DEFAULT_WINDOW` flips from `foreground` to
-   `active` for the same reason (moved into `lib-semrush-overview.mjs` as
-   `resolveOverviewWindowMode()`, so it's offline-testable without a browser).
-   `--activate-chrome` keeps its `true` default here (unlike `similarweb-query.mjs`)
-   because it now means something narrower and safer: it only gates the OS-level
-   `open -a "Google Chrome"` calls (`createChromeActivator()`, also moved into
-   the lib), which are capped at `--max-activations` (default 3) for the whole
-   run instead of firing on every hidden read unconditionally; past the cap the
-   existing tab-hidden block still applies, and `readiness.visibilityActions.hint`
-   tells the human to keep the Chrome window visible. `--activate-chrome false`
-   also downgrades an explicit `--window foreground` down to `active`, since
-   `foreground` is itself an OS-level raise and letting it through would defeat
-   the `false` promise.
-
-**Offline notCovered backfill (`deriveOverviewSupplementalBlocks` /
-`deriveAudienceInterestsSupplemental` in `lib-similarweb.mjs`), built only
-from rawText already captured in earlier live runs this session — no new
-browser use.** Every sub-block resolves to one of `data` / `legit-empty` /
-`locked` / `confirmed-absent` / `unresolved` (found the anchor, matched none
-of the known shapes — never guessed into a shape). Confirmed real:
-performance-page device split, brand-vs-non-brand share, top organic+paid
-search terms (Top5, with `changePercentDirectionUnknown: true` throughout —
-this text card carries no color/arrow evidence, so direction is never
-assumed), a reusable 3-column domain/share/change block (confirmed by the
-5-row "leading display advertisers" sample, reused for the 1-row "top
-referral sites" and the geography Top5 mini-table), and the channel-summary
-mini chart (chart axis-tick count is unpredictable, so the parser counts
-known channel labels instead and takes the trailing N value tokens right
-before the stop anchor — validated against the real 7-channel sample
-including two `N/A` entries). `audience-interests`'s industry-distribution pie
-and topic word-cloud are both implemented too (the word cloud has no
-recoverable weight/rank, so it ships as an ordered word list with an explicit
-`topicsOrderConfidence` caveat rather than pretending to be ranked).
-Deliberately left `notCovered`: the trend chart (axis labels only, no
-per-point series text — the coordinator's own stated exception), and
-`audience-overlap`'s "exclusive/shared audience" breakdown, whose real
-sample's token counts (7 site-name tokens, 3 percentages, 9 numbers) don't
-divide evenly against each other — there is no DOM row/column boundary
-recoverable from `innerText` order alone, so guessing a mapping was rejected
-even though the raw numbers are visible in the text. `audience-demographics`'s
-NOT_COVERED entry was also corrected: round 3 had already shipped
-gender/age/segment extraction, so the entry no longer claims that's missing —
-the one real remaining gap is that the segment table only ever shows
-whichever gender×age combination is currently selected in the page's own
-dropdown.
-
-**2026-09-13 sixth review: real cross-check against a data-rich site
-(canva.com — user's own suggestion, named directly in this task, not a
-privately-chosen comparison domain that needs scrubbing; unlike the earlier
-round-4 domain it is used directly in code/tests here, the same way
-howolddoyoulook.com already is).** The round-5 offline blocks had never been
-checked against a site large enough to actually populate the "only ever seen
-empty" widgets or trigger real pagination. They now have been (9 page reads +
-9 script runs; one extra page read and one extra script re-run beyond the
-planned 8+8, both to chase down real findings below — disclosed, not hidden).
-
-*Three round-5 "empty-only" blocks now have real, implemented shapes*: top
-referral industries (`网站类别`/`流量份额`, 2 columns — **no** change column,
-different from the other "3-column" widgets it was assumed to match);
-outbound link destinations (3 columns, confirmed, but the label header is the
-English `"Domain"`, not `"域"` — `deriveColumnTripleBlock`'s header params now
-accept either a string or an array of acceptable header strings); and the
-social-traffic breakdown (same "labels, then unpredictable axis-tick count,
-then the trailing N values" shape as the channel-summary chart, except
-platform names are open-vocabulary — two live reads of the same site produced
-different platform lists — so `deriveOverviewChannelSummary`'s hardcoded
-Chinese-channel-name list was replaced with a vocabulary-free
-`deriveLeadingLabelsTrailingValues` helper: count the leading run of
-non-percentage tokens instead of matching a fixed enum, which both new and old
-callers now share).
-
-**A block round 5 had completely missed, not just left empty:** "显示广告"
-(Display Ads) has its own "热门媒体" (top publishers) sub-widget, distinct
-from "导出广告 → 领先广告主" which round 5's `displayAdvertisers` field
-actually covers — the two were conflated because both showed the identical
-empty-state text on the round-5 sample site. Implemented as a new
-`topMediaPublishers` field (3 columns, label header `"发布商"`). Its real data
-surfaced two previously-unseen values worth a permanent fix: a literal `"新"`
-("new" — no prior-period baseline, the same concept as English `"NEW"`
-elsewhere, now recognized and reported as `changeIsNew: true` rather than
-silently nulled indistinguishably from "-"), and a genuine negative change
-value (`"-96%"`) that `parseNumber()` used to reject outright — its regex
-never allowed a leading minus sign, so every negative change on every column
-using it silently became `null`. Fixed by allowing an optional leading `-`;
-audited every other `parseNumber` call site and found no real data anywhere
-that would start legitimately parsing as a spurious negative.
-
-**A real, silent false-positive in `deriveSiteKeywordRows`, caught by
-diffing the script's own output against the same page read by hand:**
-`site-keywords --traffic-tab paid` reported `missingColumns: ["KD", "排位变动"]`
-on every run, even though both are absent from the paid tab's header row by
-design (paid traffic has no organic keyword-difficulty or ranking-position
-concept) — the same category of bug as the `AdSense` conditional-column fix
-from an earlier round, just not caught until a data-rich site's paid tab was
-actually read side-by-side with the script's JSON. `KD` moved out of the
-required `wanted` map into a standalone optional lookup, mirroring `AdSense`;
-`排位变动`'s missing-check now keys off whether `"排位"` itself appears in the
-headers at all, not off "how many `变动` columns exist" (that broader-looking
-fix would have silently defeated an existing, correct regression test for a
-genuinely different failure mode: a header row that still has `"排位"` but
-lost its paired `"变动"` column to an extraction glitch — that case must still
-be reported, and now is, alongside the paid-tab case that must not be).
-
-**A/B `'not-needed'` conclusions re-checked at real scale, all held.**
-canva.com's `channels` (1,213 channel-detail rows, `truncated: true`),
-`audience-interests` (36,921 cross-visit rows, `truncated: true`), and
-`site-keywords` (157,515 organic + a separate paid corpus, 7,221 and 1,576
-pages respectively) all settled to a clean `ok` (or `ok-unverified` for an
-unrelated, already-known reason) via the existing pagination-footer /
-Ant-Design-pager signals alone — no scrolling involved, matching the earlier
-small-site conclusion. This is exactly the scale case the round-5 notes had
-flagged as untested; it now is, and the conclusion was not narrowed to
-"only holds for small sites" as a result. `page_hidden_during_capture` did
-fire once (on the `channels` run) — logged as designed, did not block the
-report from otherwise resolving on retry-free single attempts elsewhere.
+`status` is exactly one of three: `ok`, `no-data` (the API says it holds no
+coverage for this site), `unavailable` (this run fetched nothing). A `no-data`
+report is evidence of sparse Similarweb coverage, not a script failure. Traffic,
+rank, channel, and competitive-site values remain directional and
+time-sensitive. The same JSON-API route backs `similarweb-batch.mjs` (the traffic
+screen) and `similarweb-keywords.mjs` (keyword expansion); the shared HTTP fetch
+layer — SPA headers, the login/403 interpretation, HTML-vs-JSON parsing — lives
+in `scripts/lib-similarweb-pro.mjs`.
 
 ### Semrush role
 
@@ -688,9 +274,10 @@ share/volume 判**。这样 US 低量但印度等市场占绝对多数的词不�
 `hidden`，下方区块不再挂载。以前靠 `open -a "Google Chrome"` 抬前台，会打断正在用电脑的人。
 现在默认给自动化窗口一块「虚拟屏幕」：任何在系统里注册为显示器、平时没人看的屏幕都可以。
 
-**哪些脚本默认用**（不传 `--window` 即生效）：`semrush-overview.mjs`、`semrush-traffic.mjs`、
-`similarweb-query.mjs`、`similarweb-batch.mjs`、`similarweb-keywords.mjs`——它们的数据依赖首次水合
-或懒加载时标签页可见。`semrush-report.mjs`、`semrush-keyword.mjs`、`tools-share-open.mjs` 原样转发
+**哪些脚本默认用**（不传 `--window` 即生效）：`semrush-overview.mjs`、`semrush-traffic.mjs`——
+它们的数据依赖首次水合或懒加载时标签页可见。Similarweb 三个脚本都不在此列：走官方 Pro 同源
+JSON API，不依赖可见标签页，默认 `background`。
+`semrush-report.mjs`、`semrush-keyword.mjs`、`tools-share-open.mjs` 原样转发
 `--window`，可显式 `--window virtual-display` 开启，默认不变（表格/关键词接口数据长期在后台模式下正常取数，
 改默认只会多一次屏幕检测和移窗）。`semrush-batch.mjs`（只读顶部卡片 + 接口证人）、
 `tools-share-evidence.mjs`、`tools-share-node.mjs`（启动探测）保持固定窗口模式。
@@ -718,12 +305,10 @@ share/volume 判**。这样 US 低量但印度等市场占绝对多数的词不�
 
 **回退**：检测不到虚拟屏幕、配置关闭、自动化窗口里混入外来标签页、找不到会话窗口时，`automationWindow.mode`
 为 `"fallback"` 并写 `fallbackReason`，脚本沿用接入前的行为——域名概览：`active` + 限次 `open -a`，
-stderr 提示「未检测到虚拟屏幕，回退为抢焦点（最多 N 次）」；Similarweb 三个脚本：`active`（`--activate-chrome true`
-时长表报表为 `foreground`）；.Trends 流量：`foreground`。
+stderr 提示「未检测到虚拟屏幕，回退为抢焦点（最多 N 次）」；.Trends 流量：`foreground`。
 
 **输出**：`automationWindow: {mode, fallbackReason?, display: {name, bounds}, windowId, moves, tabSelects, recoveries,
-visibility: {reads, visible, hidden, visibleRatio}, frontmostAppSamples: [{at, label, app}], frontmost: {samples, chromeFrontmost}}`；
-`similarweb-batch.mjs` 写在 `--out` 旁边的 `<out>.automation-window.json`，每行另带 `visibilityState`。
+visibility: {reads, visible, hidden, visibleRatio}, frontmostAppSamples: [{at, label, app}], frontmost: {samples, chromeFrontmost}}`。
 
 **运行期间不要把非自动化标签页拖进自动化窗口，也不要在那个窗口里手动开新标签页。** 扩展会把含外来标签页的窗口
 判为「借用窗口」，下一次 isolated 会在主屏另开一个新窗口；本模块也会因为认不出那个标签页而拒绝移动它、回退为抢焦点。
@@ -805,12 +390,13 @@ user management, removals, or other mutations.
 指标区分两拍渲染：先挂标签和占位值（`Authority Score` 下面一个 `0`、
 `总访问量` 下面一个空态句），几秒后真值才水合进来。**只认标签的就绪判据会在
 这个缝里通过，读到的是占位值，而且不报错。** 8 个域名跑 `semrush-overview.mjs`，
-6 个被记成 `authorityScore: 0`（真值 22/29/38/15/22/26）；同一天
-`similarweb-batch.mjs` 把月访问 351,111 的 mmradar.gg 记成 `below-floor`。
+6 个被记成 `authorityScore: 0`（真值 22/29/38/15/22/26）；同一天的面板版
+`similarweb-batch.mjs` 把月访问 351,111 的 mmradar.gg 记成 `below-floor`
+（该脚本现在读 Pro 同源 API，没有渲染缝可钻）。
 
 判据与实现见 [traffic-screen.md](traffic-screen.md#a-rendered-label-is-not-a-rendered-number)：
 `lib-tools-share.mjs` 的 `captureStable()`，**同一组数值连读两次一致才收下，
-读不稳记 error**。`semrush-batch.mjs` / `similarweb-batch.mjs` 已按此实现。
+读不稳记 error**。`semrush-batch.mjs` 已按此实现。
 
 **`semrush-overview.mjs`（2026-09-13 重写）不再借 `lib-tools-share.mjs` 的
 `captureStable()`，改用自己 `lib-semrush-overview.mjs` 里更细的判据**：每个区块
@@ -818,8 +404,8 @@ user management, removals, or other mutations.
 数、drain 无在途、页内钩子在途为 0）才算终态；这条判据顺带修掉了本节的事故——
 **AS 恰好为 0 且没有等级徽标，现在被显式判成占位值，而不是收下**。
 
-**五个脚本走 `captureStable()` 这条路**：`semrush-batch.mjs`、
-`similarweb-batch.mjs`、`similarweb-query.mjs`，以及 `semrush-report.mjs` 的全部六张报告
+**走 `captureStable()` 这条路的是仍在渲染页面上抓数的脚本**：`semrush-batch.mjs`、
+`similarweb-query.mjs`，以及 `semrush-report.mjs` 的全部六张报告
 （它拿 `parse()` 的完整输出当指纹——**指纹就是要写出去的那个对象**，
 不存在「盯着 A、写出去 B」的漏洞）。`spec.ready` 从此只是入场券，不是结论。
 
@@ -844,8 +430,8 @@ id 为 `hidden-tabs-do-not-hydrate` 的那条 law，要改就改在那儿。
 `#?\s*[\d,]+` 既不限整行也没有标签边界，于是一路扫到「Last 28 days (As of Aug 21)」，
 把 **28** 抓成了国家排名和行业排名（na.whatismymmr.com，真实是三个 `-`）。
 三条守则照抄 `semrush-report.mjs` 的 `pick()`：**碰到下一个标签就停、整行匹配、
-`-`/`N/A` 直接返回 null**。解析器同时从两份拷贝合并成一份 `lib-similarweb.mjs`——
-之前两份各抄一遍，同一个 bug 要修两次，实际只修了一次。
+`-`/`N/A` 直接返回 null**。Similarweb 侧现已改走 Pro 同源 JSON API，这段 DOM 文本解析
+（连同它的「扫过头」失败方式）一并作废。
 
 **令牌会经由第三方输出漏出去**：`opencli` 命令失败时把活动会话连同完整 URL 打进 stderr，
 `run()` 原样抛成 Error.message，脚本再塞进 `output.error.message`——

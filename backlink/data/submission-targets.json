@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-28",
+  "updatedAt": "2026-10-12",
   "note": "Submission routes observed to exist. NOT placements: no row here claims a published link, a rel value, or an index entry. A row graduates into free-channels.json only when a real anchor is seen on a live page. Relevance and authority rank these, they never gate them.",
   "targets": [
     {
@@ -3558,8 +3558,8 @@
       "priceCheckedAt": "2026-08-19",
       "status": "unverified",
       "sourceList": "flaqai/backlink_skills Free-backlink-list.md",
-      "notes": "| 114 | [https://aitools.inc/submit](<https://aitools.inc/submit>) | AI Tools Directory（aitools.inc）：是 AI 工具发现或导航网站，面向用户收集、分类和展示不同用途的 AI 产品。当前链接指向提交或新增条目入口。 | 3.12 | 已收录 等他们邮箱联系我们 | · A Free Listing ($0) is explicitly offered alongside the paid tier. | 2026-09-06 videocatch run: form-not-found — Typeform only advances on fully-trusted click/keypress events with real page focus; in opencli's background-tab mode (hasFocus=false, hidden) synthetic events only advanced one step then stalled. No captcha/login/payment involved — pure background-tab hydration limitation, not retried in foreground per safety-policy.",
-      "lastProbedAt": "2026-09-06",
+      "notes": "| 114 | [https://aitools.inc/submit](<https://aitools.inc/submit>) | AI Tools Directory（aitools.inc）：是 AI 工具发现或导航网站，面向用户收集、分类和展示不同用途的 AI 产品。当前链接指向提交或新增条目入口。 | 3.12 | 已收录 等他们邮箱联系我们 | · A Free Listing ($0) is explicitly offered alongside the paid tier. | 2026-09-06 videocatch run: form-not-found — Typeform only advances on fully-trusted click/keypress events with real page focus; in opencli's background-tab mode (hasFocus=false, hidden) synthetic events only advanced one step then stalled. No captcha/login/payment involved — pure background-tab hydration limitation, not retried in foreground per safety-policy.\n2026-10-12 shiptowp 实测：/submit 页面标题 Submit Your AI Tool，后台窗口未检出合格表单（疑似 SPA 未水合或内嵌表单）。gates 未改（本次观察不确定）。",
+      "lastProbedAt": "2026-10-12",
       "evidence": {
         "method": "anonymous-http",
         "what": "On /submit the page lists a \"Free Listing $0\" option and a \"$129 (one-time fee)\" option side by side, with an FAQ item confirming free listings are offered.",
@@ -9826,21 +9826,21 @@
     },
     {
       "domain": "dang.ai",
-      "route": "https://dang.ai/",
+      "route": "https://dang.ai/submit",
       "name": "AI Tools Directory | Dang.ai",
       "kind": "ai-directory",
-      "gate": "open-form",
+      "gate": "reciprocal",
       "gates": [
-        "open-form"
+        "reciprocal"
       ],
-      "cohort": "open",
-      "payment": "none-seen",
+      "cohort": "reciprocal",
+      "payment": "optional",
       "price": null,
       "priceCheckedAt": null,
-      "status": "usable",
+      "status": "gated",
       "sourceList": "flaqai/backlink_skills Free-backlink-list.md",
-      "notes": "| 100 | [https://dang.ai/](<https://dang.ai/>) | dang.ai：Dang.ai 是 AI 工具目录与发现网站，收集不同用途的 AI 产品。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | 3.12 | 已收录 不再与该网站合作 | | 226 | [dang.ai](<https://dang.ai>) | AI Tools Directory（dang.ai）：Dang.ai 是 AI 工具目录与发现网站，收集不同用途的 AI 产品。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 已收录 需反向连接 |",
-      "lastProbedAt": "2026-08-19",
+      "notes": "| 100 | [https://dang.ai/](<https://dang.ai/>) | dang.ai：Dang.ai 是 AI 工具目录与发现网站，收集不同用途的 AI 产品。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | 3.12 | 已收录 不再与该网站合作 | | 226 | [dang.ai](<https://dang.ai>) | AI Tools Directory（dang.ai）：Dang.ai 是 AI 工具目录与发现网站，收集不同用途的 AI 产品。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 已收录 需反向连接 |\n2026-10-12 shiptowp 实测：/submit 跳转 /pricing：无免费开放表单；免费档要求我方站挂反链（reciprocal），付费档 Basic $49 / Pro $30 setup+$19/mo。原记 open-form/usable 已过期。",
+      "lastProbedAt": "2026-10-12",
       "evidence": {
         "method": "anonymous-http",
         "what": "reachable 200, 2 form(s), no CAPTCHA/login/reciprocal signal in raw HTML",
@@ -24546,21 +24546,21 @@
     },
     {
       "domain": "saashub.com",
-      "route": "https://www.saashub.com/",
+      "route": "https://www.saashub.com/submit",
       "name": "SaaSHub - Software Alternatives, Accelerators &amp; Startups",
       "kind": "startup-launch",
-      "gate": "open-form",
+      "gate": "account",
       "gates": [
-        "open-form"
+        "account"
       ],
-      "cohort": "open",
+      "cohort": "account",
       "payment": "none-seen",
       "price": null,
       "priceCheckedAt": null,
-      "status": "usable",
+      "status": "gated",
       "sourceList": "flaqai/backlink_skills Free-backlink-list.md",
-      "notes": "| 6 | [https://saashub.com/(一个网站一次)](<https://saashub.com/>) | SaaSHub 是 SaaS 与软件发现、分类和替代方案比较平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 已收录 网站阻止提交 | | 199 | [saashub.com](<https://saashub.com>) | SaaSHub 是 SaaS 与软件发现、分类和替代方案比较平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 无法验证邮箱 已收录 我们被禁止上传了 | | 412 | [saashub.com]",
-      "lastProbedAt": "2026-08-19",
+      "notes": "| 6 | [https://saashub.com/(一个网站一次)](<https://saashub.com/>) | SaaSHub 是 SaaS 与软件发现、分类和替代方案比较平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 已收录 网站阻止提交 | | 199 | [saashub.com](<https://saashub.com>) | SaaSHub 是 SaaS 与软件发现、分类和替代方案比较平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 无法验证邮箱 已收录 我们被禁止上传了 | | 412 | [saashub.com]\n2026-10-12 shiptowp 实测：/submit 无 URL 字段（驱动守卫拒填），实为登录后仪表盘提交；原记 open-form 已过期，属 account 车道。",
+      "lastProbedAt": "2026-10-12",
       "evidence": {
         "method": "anonymous-http",
         "what": "Read the live /submit page: 'SaaSHub Submit - Our free tool that helps you to promote your product' (register/login required, no price). The $59/$99-mo figures found are pricing of an unrelated third-party product ('a chatbot that answers in your voice') listed elsewhere on the site, not a SaaSHub fee.",

@@ -1,9 +1,10 @@
 # Similarweb 功能全景 + 我们的探索缺口
 
 **调研日期**:2026-08-29。方式:纯外网调研(官方产品页/知识库检索 + 英文评测 + 中文站长圈教程),
-**未触碰** sim.3ue.co 或任何登录面板。
-对照基线:`backlink/scripts/similarweb-query.mjs` 五类报表(performance / channels /
-similar-sites / audience-geo / site-keywords)+ `similarweb-keywords.mjs` +
+**未触碰**官方 pro.similarweb.com 或任何登录面板。
+对照基线:`backlink/scripts/similarweb-query.mjs` 八类报表(performance / channels /
+similar-sites / audience-geo / site-keywords / audience-interests / audience-overlap /
+audience-demographics,全部走官方 Pro 同源 JSON API、不再渲染页面)+ `similarweb-keywords.mjs` +
 `rankup/references/provider-capabilities.md` 的 73 条路由旧地图(23 个可用模块 + 5 个买不起的独立产品)。
 
 图例:✅ 已有脚本覆盖 ⬜ 未探索(账号内可达或大概率可达) ❓ PRO/当前套餐可能不含(注明依据)

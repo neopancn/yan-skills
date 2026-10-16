@@ -450,12 +450,15 @@ export function urlFromArgs(args) {
 }
 
 export function accessEntry(args, { ms, ok, bytes, error }) {
-  const session = args[0] === 'browser' && args[1] && !BARE_BROWSER_SUBCOMMANDS.has(args[1])
-    ? args[1] : null;
+  // `browser` 前面可能有全局 flag（`--profile <id>`，见 profileArgs），
+  // 按下标写死会把 profile 值当成会话名，整条访问账都归错人。
+  const at = args.indexOf('browser');
+  const session = at >= 0 && args[at + 1] && !BARE_BROWSER_SUBCOMMANDS.has(args[at + 1])
+    ? args[at + 1] : null;
   // eval 的参数里没有 URL——页面是上一次 open 留下的。所以按会话记住最后
   // 一次导航目标，让 eval 也能归到路由上；否则「访问频次」只数得到 open，
   // 而真正的取数几乎全发生在 eval 里。
-  let url = urlFromArgs(args.slice(2));
+  let url = urlFromArgs(args.slice(at + 2));
   if (url && session) rememberUrl(session, url);
   else if (session) url = recallUrl(session);
 
@@ -468,10 +471,10 @@ export function accessEntry(args, { ms, ok, bytes, error }) {
   //      起步，于是第一个非 `--` 的词 `-f` 成了动作。4 小时的日志里 45 条会话
   //      列表全记成了 `-f`，按动作分组时它们既不算 sessions 也不算别的。
   //   2. 判据写的是 `--` 开头，短横线选项漏网。改成任何 `-` 开头都算选项。
-  const action = args[0] === 'browser'
-    ? (BARE_BROWSER_SUBCOMMANDS.has(args[1])
-        ? args[1]
-        : args.find((a, i) => i >= 2 && !a.startsWith('-') && !VALUE_FLAGS.has(args[i - 1])) || 'unknown')
+  const action = at >= 0
+    ? (BARE_BROWSER_SUBCOMMANDS.has(args[at + 1])
+        ? args[at + 1]
+        : args.find((a, i) => i >= at + 2 && !a.startsWith('-') && !VALUE_FLAGS.has(args[i - 1])) || 'unknown')
     : args[0];
   return {
     ts: new Date().toISOString(),
@@ -518,23 +521,43 @@ async function withAccessLog(args, fn) {
  */
 export function resolveBrowserWindowArgs(args, options = {}) {
   const resolved = [...args];
+  // `--profile <id>` 是 opencli 的全局 flag，排在 `browser` **前面**（见 profileArgs）。
+  // 所以 `browser` 不一定在第 0 位——按下标写死会让 --window 静默注入失败，
+  // 调用方以为自己钉住了窗口模式，实际落在 CLI 默认值上。
+  const at = resolved.indexOf('browser');
   // `sessions` / `cleanup` 不是会话名，是子命令本身。给它们注入 --window 会让
   // CLI 把子命令当成会话名解析，命令整个失败——而调用方通常 allowFailure，
   // 于是失败被吞掉，snapshotSessions() 静默返回空数组，差集回收变成空操作。
-  if (resolved[0] === 'browser' && resolved[1] && !BARE_BROWSER_SUBCOMMANDS.has(resolved[1])
+  if (at >= 0 && resolved[at + 1] && !BARE_BROWSER_SUBCOMMANDS.has(resolved[at + 1])
       && !resolved.includes('--window')) {
     const requested = options.windowMode || options.env?.OPENCLI_WINDOW || 'background';
-    resolved.splice(2, 0, '--window', normalizeWindowMode(requested, 'background'));
+    resolved.splice(at + 2, 0, '--window', normalizeWindowMode(requested, 'background'));
   }
   return resolved;
 }
 
+/**
+ * `--profile <id>` 参数段（opencli 的全局 flag，必须排在 `browser` 前）。
+ *
+ * 本机同时连着多个 Browser Bridge profile，**各自的登录态是分开的**：
+ * `msht4gxm` 登着用户的 SimilarWeb Pro，`kcamgkec` 是默认档。全局默认档会被人
+ * 或者别的任务切走，而脚本从症状上看不出来——表现是「页面空了 / 403 / 落到
+ * 登录页」，不是「profile 用错了」。所以凡是绑定某个账号登录态的取数，
+ * 一律显式钉住 profile，别依赖默认档。
+ *
+ * 传空值/未传时返回空数组：不注入，走 CLI 自己的默认档（普通站点取数就是这样）。
+ */
+export function profileArgs(profile) {
+  const id = String(profile ?? '').trim();
+  return id ? ['--profile', id] : [];
+}
+
 export async function opencli(args, options = {}) {
-  let resolved = resolveBrowserWindowArgs(args, options);
+  let resolved = resolveBrowserWindowArgs([...profileArgs(options.profile), ...args], options);
   // Default `state` snapshots to AX (accessibility-tree) format — compact,
   // fewer tokens than the full DOM tree.  Callers can still override with an
   // explicit `--source dom`.
-  if (resolved[0] === 'browser' && !resolved.includes('--source')) {
+  if (resolved.indexOf('browser') === 0 && !resolved.includes('--source')) {
     const sub = resolved.findIndex((a, i) => i >= 2 && a === 'state');
     if (sub >= 0) { resolved = [...resolved]; resolved.splice(sub + 1, 0, '--source', 'ax'); }
   }
@@ -602,9 +625,9 @@ export function printJson(value) {
  * 未做任何改动。
  *
  * `rankup/scripts/demand/revenue-site-audit.mjs` 以子进程方式给
- * `similarweb-query.mjs` 传 `--window isolated`——那条路径走的是
- * `similarweb-query.mjs` 自己的 `resolveWindowMode()`，不经过这三个函数，
- * 这次一并顺手修正（见该脚本改动说明）。`demand/game-newtitles.mjs` 也出现过
+ * `similarweb-query.mjs` 传 `--window isolated`——该脚本现已改走官方 Pro 同源
+ * API，`--window` 经 `lib-similarweb-pro.mjs` 落到这里的 `normalizeWindowMode()`，
+ * 不再有自己的 `resolveWindowMode()`。`demand/game-newtitles.mjs` 也出现过
  * `--window isolated`，但它是直接 `execFile('opencli', […])` 调 CLI 二进制本身，
  * 从不经过任何 JS 层，从来没被这段二值化影响过，也不会被这次修正影响。
  *
@@ -632,6 +655,7 @@ export function normalizeWindowMode(value, fallback = 'background') {
 export function buildBatchBrowserArgs(session, commands, options = {}) {
   const requested = options.windowMode || options.env?.OPENCLI_WINDOW || 'background';
   return [
+    ...profileArgs(options.profile),
     'browser', session, '--window', normalizeWindowMode(requested, 'background'),
     'batch', '--commands', JSON.stringify(commands),
   ];

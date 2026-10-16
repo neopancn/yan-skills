@@ -619,8 +619,11 @@ test('source guard: the module never sends anything that raises Chrome to the fr
   assert.match(code, /c\.running\(\)/, 'Chrome is only queried when already running (a tell would launch it)');
 });
 
-test('wiring guard: the four visibility-dependent entry scripts default to the virtual-display strategy', () => {
-  for (const f of ['semrush-overview.mjs', 'similarweb-query.mjs', 'similarweb-batch.mjs', 'similarweb-keywords.mjs', 'semrush-traffic.mjs']) {
+// Similarweb 三个入口（keywords / batch / query）已全部改走官方 Pro 的**同源 JSON API**
+// （2026-10-13），取数不依赖页面可见/渲染，因此不再需要虚拟屏策略——这份守卫只管
+// 仍在跑 DOM 抓取的两个 Semrush 脚本。（它们连 launchTool/automationWindow 都不 import 了。）
+test('wiring guard: the two visibility-dependent entry scripts default to the virtual-display strategy', () => {
+  for (const f of ['semrush-overview.mjs', 'semrush-traffic.mjs']) {
     const src = readFileSync(new URL(`../scripts/${f}`, import.meta.url), 'utf8');
     assert.match(src, /resolveWindowStrategy\(/, `${f} resolves the window strategy`);
     assert.match(src, /automationWindow/, `${f} writes automationWindow`);

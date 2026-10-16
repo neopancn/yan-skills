@@ -32,3 +32,6 @@ platforms/**/assets/
 # agent-fleet 是第一个真正依赖 npm 包(Claude Agent SDK)的工具目录,
 # node_modules 里含平台原生 claude 二进制(单个 ~200MB+),绝不入库。
 agent-fleet/node_modules/
+
+# 目录提交的逐域名证据产物(批量跑 submission 的中间/结果数据),不入库
+backlink/_dir_results/

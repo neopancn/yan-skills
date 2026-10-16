@@ -835,9 +835,9 @@ pairs and does not depend on `445`.
 
 **Confirmed NOT affected:** reads of an *already hydrated* .Trends page — the
 same top-pages report handed back 850 non-empty cells with
-`visibilityState === "hidden"`. And `scripts/semrush-report.mjs` and
-`scripts/similarweb-query.mjs` have been pulling real numbers in background mode
-for as long as they have existed. So do **not** change the shared default in
+`visibilityState === "hidden"`. And `scripts/semrush-report.mjs` has been pulling
+real numbers in background mode for as long as it has existed. So do **not**
+change the shared default in
 `scripts/lib-tools-share.mjs` — that would send every script racing for the
 foreground window and steal the owner's active tab, which is exactly what
 <law-ref id="background-by-default"/> exists to prevent.

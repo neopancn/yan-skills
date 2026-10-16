@@ -99,7 +99,6 @@
  */
 import { parseFlags, printJson, resolveSession, showHelpIfRequested } from './opencli-core.mjs';
 import { captureStable, expiryWarning, gotoInTool, launchTool, redactSecrets } from './lib-tools-share.mjs';
-import { parseNumber } from './lib-similarweb.mjs';
 import { plainAutomationSummary, resolveWindowStrategy, VIRTUAL_DISPLAY_WINDOW } from './lib-automation-window.mjs';
 import { classifyTargetScope } from './lib-report-readiness.mjs';
 import { DEEP_DOM_JS, scrollThroughSegments } from './lib-deep-dom.mjs';
@@ -191,8 +190,8 @@ export function verifyReportTarget({ headerTarget, domain } = {}) {
  * 只是发生得更晚、更难预测。一次就前台，行为确定，错误信息也才能诚实。
  *
  * 仍然可以显式覆盖：`--window background` / `--window isolated`。
- * **不要因为这个去改 `lib-tools-share.mjs` 的公共默认**——semrush-report.mjs 和
- * similarweb-query.mjs 长期在后台模式下正常取数，改公共默认会让它们都去抢前台。
+ * **不要因为这个去改 `lib-tools-share.mjs` 的公共默认**——semrush-report.mjs
+ * 长期在后台模式下正常取数，改公共默认会让它去抢前台。
  */
 export const DEFAULT_WINDOW = 'foreground';
 
@@ -257,6 +256,29 @@ for (const m of METRICS) for (const l of m.labels) LABEL_TO_KEY.set(l, m.key);
 const CHANGE = /^([↑↓▲▼+\-−])\s*([\d.,]+)\s*%?$/;
 /** 明写的「没有这一项」。命中即当作缺值，不是 0。 */
 const NO_VALUE = /^(?:不可用|n\/a|N\/A|—|–|-|--)$/i;
+
+/**
+ * 表格文本 → 数字（本文件的唯一一份，从已退役的 Similarweb DOM 解析器迁来）。
+ *
+ *   - `1.5M`/`20,300`/`1.6万`/`1.6亿` 还原成数字；**带后缀时四舍五入**——这类值全
+ *     是访问量、点击量这种概念上的整数，`132.8 * 1e6` 只会带来二进制浮点误差
+ *     （实测吐出过 `132800000.00000001`）。没有后缀的普通小数（CPC、份额百分比）
+ *     原样返回，圆整反而是错的。
+ *   - `<0.01%` 是「有值，但小于这个下限」，**不是没有值**——取下限本身。
+ *   - 认不出来返回 null，**绝不返回 0**：0 是「实测就是零」，两者含义相反。
+ */
+function parseNumber(value) {
+  const belowBound = String(value ?? '').trim().match(/^[<＜]\s*([\d.,]+)\s*%?$/);
+  if (belowBound) return Number(belowBound[1].replace(/,/g, ''));
+  const normalized = String(value ?? '').replace(/,/g, '').trim();
+  const match = normalized.match(/^(-?[\d.]+)\s*([KMB万亿])?$/i);
+  if (!match) return null;
+  const multipliers = { k: 1e3, m: 1e6, b: 1e9, 万: 1e4, 亿: 1e8 };
+  const raw = Number(match[1]);
+  if (Number.isNaN(raw)) return null;
+  const result = raw * (multipliers[(match[2] || '').toLowerCase()] || 1);
+  return match[2] ? Math.round(result) : result;
+}
 
 /** 百分数/纯数：去掉 % 再交给 parseNumber（它不认 %，会返回 null）。 */
 function numeric(token) {

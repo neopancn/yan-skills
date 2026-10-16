@@ -41,7 +41,7 @@ test('every launch caller explicitly releases and semrush-report has no pre-laun
     assert.match(source, /releaseBrowserLocks/, name + ' must release the shared browser lock');
   }
   assert.ok(scripts.length >= 8, `expected the scan to find the panel drivers, found ${scripts.length}: ${scripts.join(', ')}`);
-  for (const expected of ['semrush-report.mjs', 'similarweb-query.mjs', 'semrush-traffic.mjs']) {
+  for (const expected of ['semrush-report.mjs', 'semrush-traffic.mjs']) {
     assert.ok(scripts.includes(expected), `${expected} dropped out of the launchTool scan`);
   }
   const report = await readFile(new URL('../scripts/semrush-report.mjs', import.meta.url), 'utf8');

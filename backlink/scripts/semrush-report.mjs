@@ -337,8 +337,7 @@ const toNum = (v) => (v === null || v === undefined || v === '' || Number.isNaN(
 
 /**
  * 「不可用」「n/a」「—」「-」都表示这一格没有值。这个正则本来在 `magicValue` 和
- * `parseReferringDomains` 里各写了一份一模一样的（第三份是 lib-similarweb.mjs 的
- * `NO_VALUE`，那边是另一个模块，这里不跨文件复用，但至少本文件内部不再抄两遍）。
+ * `parseReferringDomains` 里各写了一份一模一样的，这里就地收敛成一份，不再抄两遍。
  * 一个判据，两处共用。
  */
 const NO_VALUE = /^(?:不可用|n\/a|—|-|N\/A)$/i;
@@ -349,8 +348,7 @@ const NO_VALUE = /^(?:不可用|n\/a|—|-|N\/A)$/i;
  * 并记进 missingColumns，而不是让后面的列顶替上来。
  *
  * keyword-magic 和 referring-domains 两张报表各自手写过一份一模一样的
- * `at()` + `Object.fromEntries` + missingColumns 逻辑（第三份等价实现是
- * lib-similarweb.mjs 私有的 buildColumnIndex，那边未导出，这里就地收敛一次）。
+ * `at()` + `Object.fromEntries` + missingColumns 逻辑，这里就地收敛一次。
  */
 function buildColumnIndex(headers, wanted) {
   const at = (name) => (headers || []).indexOf(name);

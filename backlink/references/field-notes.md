@@ -330,6 +330,42 @@ verification trap is severe enough to invalidate a whole campaign report.
   at the same time.
 - The shipped comment tool gates this behind a switch that is **on by default**,
   and advises keeping a campaign's dofollow share under 50%.
+- **The Name field IS the anchor text of the author/URL link.** The theme emits
+  the stored `author` and `url` as one link — `<b class="fn"><a href="{url}"
+  rel="…" class="url">{author}</a></b>` — so the string typed into Name becomes
+  the rendered anchor text. When the objective is a keyword anchor, the Name
+  field must carry **that keyword** and the Website field the **matching landing
+  page**; a plausible-sounding human name there ("Sofia M.") throws the anchor
+  slot away. Two caveats: keep the campaign's anchor distribution healthy — do
+  not type the same keyword into every comment — and the author-field link is
+  nofollow on every install sampled, so a keyword here buys **relevance, not
+  PageRank**. Record the anchor text you actually saw on the published page, not
+  the name you sent.
+  - The exception is a **dofollow body-link** comment: there the anchor is
+    authored inside the body `<a>`, so the Name field should stay a normal name.
+    Putting the keyword in Name adds nothing the body link does not already
+    carry, and it makes the comment self-identify as promotion.
+- **"Saved" is not "published": the duplicate signal proves storage, not a live
+  comment.** Re-POSTing the identical payload and reading `409 Duplicate comment
+  detected` proves the first POST was stored — it says nothing about whether the
+  comment is visible. A first-time comment is routinely held: installs commonly
+  enable manual approval or "author must have a previously approved comment", and
+  any Akismet install may file it as spam. From outside, a held comment and a
+  published one look the same on the first POST — no readable comment anchor,
+  and (because `fetch` drops the fragment) `Response.url` is just the article
+  URL either way. A `302` that lands on `#comment-<id>` is **not** proof either;
+  one install redirected there and the comment was still not on the page. Decide
+  only with a **cookie-less anonymous re-read of the article and its
+  `comment-page-1..N`**, searching the page for an anchor to your domain, and
+  read the anchor's `rel` from that same re-read.
+- **Find the auto-publishing installs and spend them on the dofollow lane.**
+  Whether an install publishes immediately is unknown until a submission lands,
+  and it is not the same set as "has an open comment form". A dofollow body link
+  on an install that holds comments never renders — the whole newline trick is
+  wasted — while a nofollow-lane comment on that same install was spent on a
+  link that the author field would have made nofollow anyway. Sample this
+  deliberately: place a plain comment first, confirm it publishes, and aim the
+  body-link comments at the ones that did.
 
 Two architectural blockers decide most of the target list before any of that:
 

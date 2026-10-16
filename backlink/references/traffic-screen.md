@@ -6,13 +6,22 @@ a useful signal, and its DR is whatever its own network linked into it.
 
 **Who does what is fixed: scripts collect, the AI judges, a human can re-check.**
 The batch scripts produce evidence per domain — the measured raw value, a parse
-status (`parsed` / `no-data-marker` / `none`), a raw-text excerpt, a screenshot
-and full-text dump in `<out>.jsonl.evidence/`, and a `stopReason` saying how the
-capture ended. They produce **no verdict**: whether a domain qualifies is
+status (`parsed` / `no-data-marker` / `none`), a `stopReason` saying how the
+capture ended, and a scene under `<out>.jsonl.evidence/`: a screenshot + full-text
+dump for the DOM-scraping captures, or the header JSON the API returned for
+`similarweb-batch.mjs`. They produce **no verdict**: whether a domain qualifies is
 computed from the number at query time, and what an *absent* number means is a
 judgment the AI makes by reading the evidence — never something a script bakes
 into the data. A one-off mirror hiccup must stay re-checkable, not become a
 permanent "fail" that silently kills a good target.
+
+> Every Similarweb script (`similarweb-batch.mjs`, `similarweb-query.mjs`,
+> `similarweb-keywords.mjs`) reads the **official pro.similarweb.com JSON API**,
+> not the shared panel — so there is no page to render: no two-beat hydration, no
+> `visibilityState` triage, no window-label mismatch, no screenshot. Whenever this
+> page describes those DOM mechanics, they bound the captures that still scrape a
+> rendered page (`semrush-batch.mjs`, `semrush-overview.mjs`, `semrush-report.mjs`),
+> not the Similarweb scripts.
 
 ## The commands
 
@@ -39,23 +48,28 @@ historical script output, not measurement facts. Re-measuring replaces them;
 ## Budget by quota, not by clock
 
 Amortising the login gets a domain down to ~5s, which makes "a few hundred in
-half an hour" look right. It is not: the panel's *API 今日配额* went from 13% to
-100% at around domain 110, and every call after that timed out —
+half an hour" look right. It is not: the shared panel's *API 今日配额* went from
+13% to 100% at around domain 110, and every call after that timed out —
 indistinguishable from a dead session, and the launcher's own error message
-sends you off to change nodes.
+sends you off to change nodes. **`similarweb-batch.mjs` no longer touches that
+panel** (it reads the Pro account's own JSON API), so that hard ceiling is the
+Semrush/panel-era budget; what still constrains a Similarweb run is the Pro
+account's own rate limit, not the shared card.
 
-Plan on **~120 domains per card per day**. Quota is per card, so when Similarweb
-is spent, Semrush usually is not — switch and keep going, but record which one
-measured each row. Similarweb reports *total visits* (global by default) and
-Semrush reports *organic traffic* for whatever single country `--db` names (or
-Semrush's own default if you omit it — never a global figure); those are not
-the same number even before the geography difference, which is what
-`traffic.source` exists for. Pass `--db` explicitly to `semrush-batch.mjs` when
-comparing rows across a run, or the country underneath each `organicTraffic`
-value is whatever Semrush happened to default to that day.
+Plan on **~120 domains per card per day** where a shared panel is in play.
+Quota is per card, so when Similarweb is spent, Semrush usually is not — switch
+and keep going, but record which one measured each row. Similarweb reports
+*monthly visits* (global) and Semrush reports *organic traffic* for whatever
+single country `--db` names (or Semrush's own default if you omit it — never a
+global figure); those are not the same number even before the geography
+difference, which is what `traffic.source` exists for. Pass `--db` explicitly to
+`semrush-batch.mjs` when comparing rows across a run, or the country underneath
+each `organicTraffic` value is whatever Semrush happened to default to that day.
 
-Both batch scripts break the circuit after 5 consecutive errors. Without it one
-dead session burned 48 domains at 60s each before anyone noticed.
+Both batch scripts break the circuit on consecutive failures — `semrush-batch.mjs`
+after 5 consecutive errors, `similarweb-batch.mjs` after 3 consecutive failed
+chunks (one failed chunk = a dead session/login, not the domains). Without a
+breaker one dead session burned 48 domains at 60s each before anyone noticed.
 
 ## "No data" and "timed out" are opposite evidence
 
@@ -118,9 +132,10 @@ scrapes a number goes through it (`--stable-interval` everywhere):
 | Script | Fingerprint |
 |---|---|
 | `semrush-batch.mjs` | organic traffic + Authority Score |
-| `similarweb-batch.mjs` | total visits + ranks, or the empty-state marker |
-| `similarweb-query.mjs` | the report's own payload (metrics / channels / page text) **plus** the page's own rendered window label — a same-tab query can inherit the previous navigation's stale date range even though the new URL asked for a different one, so the window label is folded into the fingerprint rather than left out of what "stable" means |
 | `semrush-report.mjs` | `spec.parse()`'s entire return value, all 6 reports |
+
+None of the Similarweb scripts are in this table any more: they read the Pro JSON
+API, so there is no rendered number to stabilise — the API's answer *is* the answer.
 
 `semrush-overview.mjs` (rewritten 2026-09-13) no longer goes through this
 shared helper — its per-section readiness rule in `lib-semrush-overview.mjs`
@@ -217,8 +232,8 @@ one** — it is not marked, not retried, and reads as data.
 
 `semrush-report.mjs` already had all three in its `pick()`. Similarweb did not,
 because its parser had been **copied into two scripts** — so the fix had to land
-twice and landed once. There is now exactly one copy, in `lib-similarweb.mjs`,
-imported by both `similarweb-query.mjs` and `similarweb-batch.mjs`.
+twice and landed once. **That DOM parser is gone now**: Similarweb reads the Pro
+JSON API, so there is no text parser left to duplicate.
 
 ## Do not substitute a popularity list for measured traffic
 
@@ -234,7 +249,9 @@ sites is not the problem a gate exists to solve.
 
 Speed is not a reason to downgrade the metric. The panel login costs ~20s and
 the query itself ~5s, so amortise the login across the batch (that is all
-`similarweb-batch.mjs` does) instead of reaching for a weaker free signal.
+`similarweb-batch.mjs` did) instead of reaching for a weaker free signal. The
+Pro JSON API route drops even the login amortisation: one landing, then several
+domains per call.
 
 ## Three field signs that a batch is one link network
 

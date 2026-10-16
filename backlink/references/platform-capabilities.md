@@ -723,7 +723,7 @@ and the panel card's "API quota" are two separate pools.
 </summary>
 
 <routes><![CDATA[
-| # | route (hash on sim.3ue.co) | shape | readyBranch | measured scale |
+| # | route (Similarweb hash route) | shape | readyBranch | measured scale |
 |---|---|---|---|---|
 | 1 | KW home #/organicsearch/websiteanalysis/home | search box + recents + keyword-list cards (no table/svg) | null (machine-blind, exit 2) | 13 sub-page nav; 5 recent domains; 16 keyword lists |
 | 2 | Keyword overview #/digitalsuite/acquisition/keyword/organic/search/999/<YYYY.MM-YYYY.MM>/overview_2?keyword=<kw> | metric cards + SERP-composition ring + trend + top sites/URLs/related | chart (svgText 48, 21s) | image editor: volume 312.6K, clicks 262.2K, zero-click 31%, KD 95, CPC $0.01–6.52 |
@@ -763,7 +763,7 @@ Three template rules worth the whole round:
 </url-template-laws>
 
 <lesson id="mirror-jitter-vs-empty-vs-paywall">
-**Three failure shapes on sim.3ue.co that must never be confused** (mirror
+**Three failure shapes on the Similarweb panel that must never be confused** (mirror
 jitter confirmed by the user 2026-08-30, same error page refreshed into full
 data on the Semrush side too):
 - **Mirror jitter / cold SPA shell**: blank page, a few-dozen-byte empty
@@ -841,7 +841,7 @@ the target route and was still there 12s later, `document.referrer` carried no
 </summary>
 
 <routes><![CDATA[
-| # | route (hash on sim.3ue.co) | shape | readyBranch | measured scale |
+| # | route (Similarweb hash route) | shape | readyBranch | measured scale |
 |---|---|---|---|---|
 | 18 | AI Traffic #/digitalsuite/ai-traffic/overview/*/999/6m?webSource=Total&key=<domain> | total card + stacked split + area chart w/ 22-platform checklist + REAL table of chatbot landing pages | table (cells 105 / filled 100, svgText 16; ready in 2 polls) | openai.com 6m: total 275.2M, AI share 23%, ChatGPT 96.08%; 22 AI platforms; 999 URLs / 20 per page / pager 1 of 50 |
 | 19 | Keyword generator · YouTube …/keyword-generator-tool/999/28d?searchEngine=youtube&keyword=<kw>&webSource=Total&isWWW=*&tab=phraseMatch | 12-month YouTube trend line + 2 tabs + 5-column board (关键字/规模/流量趋势/点击量/热门国家 地区) | chart (svgText 18, 21s) | `ai image editor`: phrase 106 / related 3,465 — two orders of magnitude below the Google dictionary, which is normal |

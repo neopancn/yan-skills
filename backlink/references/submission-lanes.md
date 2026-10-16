@@ -10,9 +10,36 @@ tags. Both lanes produce work; neither is a leftover.
 | Ends at | `submitted` / `outcome-unknown` | `staged-captcha` — a form on screen needing a code and a click |
 | Who finishes it | nobody | the owner, in one sitting, seconds per site |
 
-The driver never types a CAPTCHA answer, never creates an account, never pays,
-and never ticks a terms box — those stop the row and move it to Lane B with
-whatever could legitimately be filled already in place.
+The driver never types a CAPTCHA answer, never pays, and never ticks a terms
+box — those stop the row and move it to Lane B with whatever could legitimately
+be filled already in place. It **does** create accounts: the owner has
+authorized registration, and the one thing a script cannot do — read the
+mailbox — is handled by the separate `mailbox` Skill (see below).
+
+## Account registration and email verification (`mailbox`)
+
+`account` and `email-verify` are no longer "wait for a person" cohorts. The
+registration itself is scripted; the verification mail goes to the **`mailbox`
+Skill**'s domain, which owns the receiving side (Cloudflare Email Worker → D1 →
+`read_mailbox.py`). That domain is a catch-all, so any local part reaches the
+same inbox. This is the key that turns Lane B's account half into real work.
+
+1. Open the target's sign-up route in that row's **own** session.
+2. Register with a **per-target alias** on the mailbox domain — the shared form
+   is `<project>-<target>@<mailbox-domain>` — plus the profile's submitter name.
+   Never one fixed address across targets (it fingerprints the batch), never
+   invent a third-party address, and never reuse someone else's account. Keep
+   the alias → target mapping in the accounts store, never in the ledger.
+3. Submit, then poll the mailbox filtered by the sender's domain — use `ts` to
+   tell new mail from old; there is no push, only polling.
+4. Open the activation link, or enter the OTP, **in the same session**, then
+   continue to the listing form.
+5. Record the account in the ledger row's evidence. Record **never** the
+   credentials, and never a token.
+
+Stop the row as before if the mailbox Skill is unavailable, or if finishing the
+sign-up still needs a CAPTCHA/Turnstile, a phone number, a company/personal
+address, or payment — those stay Lane B.
 
 ## Lane B needs one session per staged site
 
@@ -38,11 +65,11 @@ cohorts cost different things:
 
 | Cohort | What the run needs |
 | --- | --- |
-| `open` | nobody. The only cohort that can run unattended. |
+| `open` | nobody. The only cohort that needs no second party at all. |
 | `captcha` | a human at the keyboard for the whole run |
-| `account` | credentials and an identity decision, made **before** the run |
+| `account` | the `mailbox` Skill for the verification mail; the identity is a standing decision, not a per-row one |
 | `account-captcha` | both of the above |
-| `email-verify` | a mailbox watched while the run is going; tokens expire mid-batch |
+| `email-verify` | the `mailbox` Skill polled while the run is going; tokens expire mid-batch |
 | `reciprocal` | a change to the owner's own site — their decision, never yours |
 | `personal-contact` | real name / phone / company email — also the owner's decision |
 

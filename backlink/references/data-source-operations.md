@@ -21,9 +21,10 @@ The launched application sits on a different host from the dashboard entry
 point, so the second cannot be derived from the first.
 
 All of these share one launcher, `lib-tools-share.mjs`. **Do not write a second
-one.** A previous copy of the launch sequence inside `similarweb-query.mjs`
-omitted three of the four known traps and failed with a generic "unavailable"
-whose real cause differed every time.
+one.** The launch sequence was once copied inline into `similarweb-query.mjs`
+(before that script moved off the panel to the Pro JSON API) and omitted three of
+the four known traps, failing with a generic "unavailable" whose real cause
+differed every time.
 
 **Check the subscription expiry before planning around it** — it is short-dated,
 the scripts print it, and they warn inside 7 days.
@@ -56,7 +57,7 @@ Semrush 报表返回「已达到每日报告限额」，换到 `节点2`（一�
 ——它原来在**整页**里搜这句话，而限额页会照常渲染完整列头，供应商改文案 / A/B / 帮助气泡
 里出现同一句话都会两个方向都误判。现已改成绑**表体区**：`filledCells === 0` **且**这句提示
 出现在表体区自己的文字里；表体区定位不到时报 `quota-suspected`，不冒充确诊。
-即便如此也不要假设脚本会替你挡住限额。`similarweb-query.mjs`、`semrush-overview.mjs`、`semrush-batch.mjs`、
+即便如此也不要假设脚本会替你挡住限额。`semrush-overview.mjs`、`semrush-batch.mjs`、
 `semrush-keyword.mjs` 等其余脚本完全没有这项检测。**在这条被自动化补上之前，读表前必须自己
 在表体文字里找一遍「已达到每日报告限额」**，出现了就是节点问题，换节点重跑，不是这个域名
 没数据——不要假设脚本会替你发现。

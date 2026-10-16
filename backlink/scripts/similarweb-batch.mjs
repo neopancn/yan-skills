@@ -2,99 +2,166 @@
 /**
  * similarweb-batch.mjs —— 一次登录，批量**采集**流量证据。只采集，不判断。
  *
- * 为什么要有它：`similarweb-query.mjs` 每跑一个域名都要重走一遍「开面板 → 选节点 →
- * 点打开 → 等落地」，实测单域名 27 秒，其中 20 秒是启动。批量筛选外链目标动辄几百个
- * 域名，按单域名脚本跑要三个多小时，而这套面板是**共享订阅、随时会到期**的，
- * 慢就等于拿不到。本脚本把启动做一次，之后只换 hash 路由，单域名摊到 6-10 秒。
+ * 数据来源是**用户自己的 pro.similarweb.com**（同源 JSON API
+ * `/api/WebsiteOverview/getheader`），不再是哥飞的共享面板 sim.3ue.co。
+ * 理由与踩过的坑写在 lib-similarweb-pro.mjs 顶部；一句话：面板登录态已失效，
+ * 而官方站上这条路返回结构化 JSON——不渲染、不解析虚拟表格、不受面板档位与
+ * 共享配额影响，字段还更多（主流量国、公司规模、站点标题）。
  *
  * **输出是证据，不是判决。** 每域一行 JSONL：
- *   { domain, status, totalVisits, monthlyVisits, windowLabel, windowRequested,
- *     windowActual, windowMatchesRequest, globalRank, countryRank,
- *     parse: parsed|no-data-marker|none, stopReason, rawExcerpt,
+ *   { domain, status, parse, stopReason, monthlyVisits, globalRank,
+ *     country, countryRank, employeeRange, title, source,
  *     evidence: { screenshot, raw, screenshotError }, error, checkedAt }
- * `pass/fail/below-floor` 不再产出——「查不到数据」只是数据源明说了空态
- * （stopReason: empty-state），是不是低流量由 AI 拿证据（截图 + 原文）下判；
- *
- * **`status` 字段（2026-09-13 二次复核新增）**：`ok` / `ok-unverified`（窗口读不到，
- * 数字仍在正式字段，但没有独立确认过是不是 28d 口径）/ `ok-window-fallback-accepted`
- * （确认窗口不一致，调用方传了 `--accept-window-fallback` 显式接受）/
- * `scope-mismatch`（确认窗口不一致、且没有接受放宽——`totalVisits`/`globalRank`
- * 等正式字段是 `null`，真实数字降级进 `unconfirmedTotalVisits` 等字段，
- * `stopReason: 'window-scope-mismatch'` 不在 `COMPLETE_STOP_REASONS` 里，
- * 下次 `--domains-file` 续跑会自动重测这个域名）。**"照常收下 + 打个字段"曾经
- * 是这里的做法，二次复核认定这仍然是"以为抓到了、其实没抓到"——大多数只看
- * `totalVisits` 的消费代码根本不会去翻 `windowMatchesRequest`。**
- *
- * **`totalVisits` 的窗口不固定，2026-09-12 实测发现。** 面板会把请求的 28
- * 天窗口悄悄改写成别的窗口（实测落地成 6 个月累计），而「总访问量」标签在
- * 两种窗口下长得一模一样——`totalVisits` 可能是 28 天数字，也可能是 6 个月
- * 累计数字，字段名本身分不出来。`windowLabel` 原样记下页面自己的窗口文案
- * （「最后 28 天数 (As of ...)」或「Mon YYYY - Mon YYYY (N 月)」），
- * `monthlyVisits` 是页面「参与度概览」区另给的月度数字，窗口被改写时应优先
- * 拿它过 `>= 100` 月访问闸门，而不是拿改写窗口后的 `totalVisits` 硬当月度用。
- * 两个数字该用哪个、要不要换算，是读证据的人的判断，脚本只负责把两个都放出来。
- * 超时/不稳定/异常是「这次没测成」，**绝不能当成任何结论**。
+ * `pass/fail/below-floor` 不产出——「查不到数据」只是 API 明说了空态
+ * （stopReason: empty-state），是不是低流量由 AI 拿证据下判。
  * 行契约与完成语义见 lib-batch-evidence.mjs。
+ *
+ * **没有渲染，就没有「延迟加载 / 窗口被改写 / 这个标签页到底选没选中」这一整类问题。**
+ * 面板时代那些字段（windowLabel / windowRequested / windowMatchesRequest /
+ * scope-mismatch / unconfirmed*）随面板一起删掉了：Pro 的 `monthlyVisits` 是
+ * Similarweb 自己算的月度值，跟 UI 上看到的同源，不存在「请求 28d 落地成 6 个月」。
  *
  * 三条硬约束，照抄别改：
  *   1. **同步前台跑，不许后台化。** 这是一长串网络调用，后台化之后没有任何东西会叫醒
  *      调用方，任务会在写下零行输出的情况下"完成"。要跑很久就调大超时，不要放后台。
- *   2. **每测完一个域名立刻追加写盘（JSONL）**，同时把该域采集时刻的正文全文与截图
- *      落进 `<out>.evidence/`。中途挂掉时已测的部分必须留下现场。
+ *   2. **每测完一个域名立刻追加写盘（JSONL）**，该域这次的 API 原始头部 JSON 落进
+ *      `<out>.evidence/`。中途挂掉时已测的部分必须留下现场。
  *   3. **可续跑。** 启动时读一遍输出文件，stopReason 已完成（stable/empty-state）的
- *      域名直接跳过；未完成（unstable/timeout/exception）的重测。旧格式行
- *      （verdict 字段）按 legacy 规则识别，verdict=error 视为未完成。
+ *      域名直接跳过；未完成（exception）的重测。旧格式行（verdict 字段）按 legacy
+ *      规则识别，verdict=error 视为未完成。
  *
- * 「没有数据」的空态**必须正面认出，不能靠超时兜底**。下限之下的域名页面是**正常渲染
- * 完成**的，只是把指标区换成了「抱歉，未找到与该搜索匹配的内容」+ 一排 N/A。第一版只认
- * 「总访问量」，于是每个这类域名都白等满一整个超时。判据：**「没有数据」几乎总有一个
- * 自己的页面形态，去把那句话找出来，不要用超时代替它。**
+ * 「没有数据」的空态由 API 自己说明：未被收录的站在 getheader 上返回
+ * `globalRanking: 0` 且不带 `monthlyVisits`——那是「SimilarWeb 无数据」，
+ * 不是流量为 0，落盘写成 status=no-data / 字段 null。
  *
  * 用法：
- *   node scripts/similarweb-batch.mjs --domains-file d.txt --out traffic.jsonl [--session x] [--node 3]
- *        [--window foreground|active|background|isolated]
- *   # 证据落在 traffic.jsonl.evidence/<domain>.png / .txt
- *   # --window 默认 active（选中标签页、不节流，但不夺 OS 焦点，2026-09-14 前是
- *   #   background）；显式传其它值原样透传给 opencli。
- *   # --accept-window-fallback：把页面实际显示的窗口当这次批量采集的权威口径，
- *   #   照常收下（而不是把这一行判成 scope-mismatch）
+ *   node scripts/similarweb-batch.mjs --domains-file d.txt --out traffic.jsonl
+ *   node scripts/similarweb-batch.mjs --domains a.com,b.com --out traffic.jsonl
+ *   # 证据落在 traffic.jsonl.evidence/<domain>.txt（该域 API 头部 JSON 原文）
+ *   可选：--chunk 10 --wait 6 --session x --profile <id> --window background
+ *        --timeout 180000 --keep-open --self-test
  *
- * 截图链路（opencli browser screenshot）2026-08-30 重构后已实盘验证（见 backlink/evidence/screenshot-chain-VERDICTS.md）；
- * 拍不到时行内记 screenshotError，不影响采集本身。
+ * 【必须知道的两条】
+ * 1. **登录态在独立的 opencli profile 里**（默认 msht4gxm），脚本会显式钉住它。
+ *    用错档 / 登录态失效的症状是「页面落到登录页，每个请求都返回 HTML」——
+ *    脚本在落地那一刻就断言域名，不让它一路伪装成「这些域名都没数据」。
+ * 2. **每 chunk 一次 CLI 调用、页内循环**：一个 chunk 的域名在同一个页面上下文里
+ *    逐个发请求，省掉每域名一次进程启动。整块失败 = 会话/登录态死了，不是域名的问题。
  */
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
-import { resolveSession, parseFlags, showHelpIfRequested, required, validateSession, opencli } from './opencli-core.mjs';
-import { captureStable, expiryWarning, gotoInTool, launchTool, redactSecrets } from './lib-tools-share.mjs';
-import { resolveWindowStrategy, VIRTUAL_DISPLAY_WINDOW } from './lib-automation-window.mjs';
-import { writeFileSync } from 'node:fs';
-// 解析只有一份，住在 lib-similarweb.mjs。**不要在这里再抄一份 deriveMetrics。**
-import { compareWindowToRequest, deriveMetrics, resolveSimilarwebWindowMode } from './lib-similarweb.mjs';
-import { isRowComplete, rawExcerptOf, screenshotPaths, writeRawEvidence } from './lib-batch-evidence.mjs';
+import { closeSession, parseFlags, required, resolveSession, showHelpIfRequested } from './opencli-core.mjs';
+import {
+  openSimilarwebPro, proEval, resolveSimilarwebProProfile, SW_PRO_HEADERS_JS,
+} from './lib-similarweb-pro.mjs';
+import { isRowComplete, writeRawEvidence } from './lib-batch-evidence.mjs';
+
+const SOURCE = 'similarweb-pro getheader';
 
 const flags = parseFlags(process.argv.slice(2));
 showHelpIfRequested(flags, import.meta.url);
-const outPath = required(flags, 'out');
-const session = resolveSession(flags, 'sw-batch', 'similarweb');
-const appOrigin = (process.env.TOOLS_SHARE_APP_ORIGIN || 'https://sim.3ue.co').replace(/\/+$/, '');
-// settle 与超时在 2026-08-24 调大过一次，**不要为了快调回去**：占位值本身是稳定的，
-// 两次快读之间它根本不变，「连读两次一致」这条判据在小 settle 下整个失效
-// （同一天 semrush-batch 就是这么把 3 个正常站的读数读成空的）。
-const perDomainTimeout = Math.max(10_000, Number(flags['domain-timeout'] || 75) * 1000);
-const settle = Number(flags.settle || 6);
-// 2026-09-13 二次复核：一行数字照常落盘、只在字段里悄悄标一个 windowMatchesRequest
-// 仍然是"以为抓到了、其实没抓到"——大多数消费这份 JSONL 的代码只看
-// totalVisits/globalRank，不会去翻这个字段。默认这一行判非成功（stopReason
-// 不进 COMPLETE_STOP_REASONS，续跑会自动重测），传这个 flag 才把页面实际
-// 显示的窗口当这次批量采集的权威口径，照常收下。
-const acceptWindowFallback = Boolean(flags['accept-window-fallback']);
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function normalizeDomain(value) {
   const c = value.includes('://') ? new URL(value).hostname : value.split('/')[0];
   const n = c.trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
   return /^[a-z0-9.-]+\.[a-z]{2,63}$/.test(n) ? n : null;
 }
+
+/** 一个 chunk 的取数表达式：在页面上下文里对每个域名发一次 getheader，逐域兜住异常。 */
+function fetchExpr(domains) {
+  return `(async () => {
+  const ds = ${JSON.stringify(domains)};
+  const H = ${SW_PRO_HEADERS_JS};
+  const out = [];
+  for (const d of ds) {
+    try {
+      const r = await fetch("/api/WebsiteOverview/getheader?keys=" + encodeURIComponent(d) + "&mainDomainOnly=true&includeCrossData=true", { credentials: "include", headers: H });
+      const t = await r.text();
+      if (!r.ok) { out.push({ domain: d, error: "HTTP " + r.status + ": " + t.slice(0, 150) }); continue; }
+      let j;
+      try { j = JSON.parse(t); } catch { out.push({ domain: d, error: "non-JSON body: " + t.slice(0, 150) }); continue; }
+      out.push({ domain: d, data: j[d] || Object.values(j)[0] || {} });
+    } catch (e) { out.push({ domain: d, error: String(e).slice(0, 200) }); }
+  }
+  return JSON.stringify(out);
+})()`;
+}
+
+function exceptionRow(domain, message) {
+  return {
+    domain,
+    status: 'exception',
+    parse: 'none',
+    stopReason: 'exception',
+    monthlyVisits: null, globalRank: null, country: null, countryRank: null,
+    employeeRange: null, title: null,
+    source: SOURCE,
+    evidence: { screenshot: null, raw: null, screenshotError: null },
+    error: String(message).slice(0, 300),
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+/** API 头部记录 → 本仓库的批量行（**纯函数，不碰 IO**：evidence 由调用方补）。 */
+export function headerRow(entry) {
+  if (entry?.error) return exceptionRow(entry.domain, entry.error);
+  const data = entry?.data || {};
+  // 只认真的数字：null 经 Number() 会变成 0，那样「没有数据」会被写成「流量 0」。
+  const visits = Number.isFinite(data.monthlyVisits) ? Math.round(data.monthlyVisits) : null;
+  const rank = Number.isFinite(data.globalRanking) && data.globalRanking > 0 ? data.globalRanking : null;
+  const noData = visits === null && rank === null;
+  return {
+    domain: entry.domain,
+    status: noData ? 'no-data' : 'ok',
+    parse: noData ? 'no-data-marker' : 'parsed',
+    stopReason: noData ? 'empty-state' : 'stable',
+    monthlyVisits: visits,
+    globalRank: rank,
+    country: data.highestTrafficCountry || null,
+    countryRank: Number.isFinite(data.highestTrafficCountryRanking) ? data.highestTrafficCountryRanking : null,
+    employeeRange: data.employeeRange || null,
+    title: data.title || null,
+    source: SOURCE,
+    evidence: { screenshot: null, raw: null, screenshotError: null },
+    error: null,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+if (flags['self-test']) {
+  // 1) 数字判定：0 与缺失必须分得开——`globalRanking: 0` 是「无数据」（真的有这个数），
+  //    而 `monthlyVisits: null` 是「没有这个值」，两者都不能被写成 0。
+  const rows = [
+    { domain: 'a.com', data: { monthlyVisits: 350000, globalRanking: 1234, highestTrafficCountry: 'US', highestTrafficCountryRanking: 567 } },
+    { domain: 'b.com', data: { globalRanking: 0 } },
+    { domain: 'c.com', error: 'HTTP 500: boom' },
+  ].map(headerRow);
+  const ok = rows[0].stopReason === 'stable' && rows[0].parse === 'parsed' && rows[0].monthlyVisits === 350000
+    && rows[0].globalRank === 1234 && rows[0].country === 'US' && rows[0].countryRank === 567
+    && rows[1].stopReason === 'empty-state' && rows[1].monthlyVisits === null && rows[1].globalRank === null
+    && rows[1].status === 'no-data'
+    && rows[2].stopReason === 'exception' && rows[2].parse === 'none';
+  if (!ok) throw new Error(`similarweb-batch self-test failed [map]: ${JSON.stringify(rows)}`);
+  // 2) 续跑语义：完成的行跳过，未完成的（exception）重测。
+  if (!isRowComplete({ stopReason: 'stable' }) || !isRowComplete({ stopReason: 'empty-state' })) {
+    throw new Error('similarweb-batch self-test failed [resume]: stable/empty-state must count as complete');
+  }
+  if (isRowComplete({ stopReason: 'exception' })) {
+    throw new Error('similarweb-batch self-test failed [resume]: exception must be retried');
+  }
+  console.log('similarweb-batch self-test: PASS');
+  process.exit(0);
+}
+
+const outPath = required(flags, 'out');
+// 配额站纪律：会话名固定 similarweb-nav（见 opencli-core 的 QUOTA_SITES）。
+const session = resolveSession(flags, 'sw-batch', 'similarweb');
+const profile = resolveSimilarwebProProfile(flags);
+// 每个 chunk 的域名在同一个页面上下文里逐个发请求——一次 CLI 往返摊到 N 个域名。
+const chunkSize = Math.max(1, Number(flags.chunk || 10));
+const openWait = Number(flags.wait || 6);
+const evalTimeoutMs = Number(flags.timeout || 180_000);
+// 同源 fetch 不依赖页面渲染，所以默认用不抢焦点的 background。
+const windowMode = typeof flags.window === 'string' && flags.window ? flags.window : 'background';
 
 const wanted = [];
 {
@@ -106,9 +173,9 @@ const wanted = [];
     if (d && !wanted.includes(d)) wanted.push(d);
   }
 }
+if (!wanted.length) { console.error('[batch] 域名列表为空'); process.exit(1); }
 
 // 续跑：已完成的域名不再测。**未完成不算跑过**——它是「这次没测成」，不是结论。
-// 把它当已完成会让一次会话挂掉造成的整段空洞永久固化下来，而且完全看不出来。
 const done = new Set();
 if (existsSync(outPath)) {
   for (const line of readFileSync(outPath, 'utf8').split('\n')) {
@@ -123,235 +190,66 @@ const todo = wanted.filter((d) => !done.has(d));
 console.error(`[batch] ${wanted.length} requested, ${done.size} already done, ${todo.length} to go`);
 if (!todo.length) process.exit(0);
 
-// 2026-09-14：resolveSimilarwebWindowMode 默认从 background 改成 active（选中
-// 标签页、不节流，但不夺 OS 焦点）——跟 similarweb-query.mjs 同一次修复统一
-// 默认；显式 --window 原样透传（foreground/active/background/isolated），不再
-// 是"非 foreground 就一律 background"的二值化。
-// 2026-09-14 虚拟屏幕：不传 --window 默认 virtual-display（检测不到虚拟屏幕时回退 active）；显式四档原样透传。
-const fallbackWindowMode = resolveSimilarwebWindowMode(flags.window === VIRTUAL_DISPLAY_WINDOW ? undefined : flags.window);
-const windowStrategy = resolveWindowStrategy({ windowFlag: flags.window, fallbackWindowMode });
-const launched = await launchTool({
-  session,
-  tool: 'similarweb',
-  node: flags.node,
-  window: windowStrategy.launchWindow,
-  fallbackWindow: fallbackWindowMode,
-  automationDisplay: flags['automation-display'],
-  wait: Number(flags.wait || 7),
-  timeout: Number(flags.launchTimeout || 60),
-  allowParallelSession: Boolean(flags['allow-parallel-session']),
-});
-try {
-const evaluate = launched.evalPage;
-const subscription = {
-  expiry: launched.state.expiry,
-  daysLeft: launched.state.daysLeft,
-  warning: expiryWarning(launched.state),
-};
-if (subscription.warning) console.error(`[batch] ${subscription.warning}`);
-
-const ROUTE = '/#/digitalsuite/websiteanalysis/overview/website-performance/*/999/28d?webSource=Total&key=';
-// 这个脚本永远请求同一个窗口段——所有域名共用一次比对基准，不用每域名重算。
-const REQUESTED_WINDOW_SEG = '28d';
-
 /**
- * 该域采集时刻的现场：正文全文进 raw 文件，截图一张进 evidence 目录。
- * 两者都是尽力而为——现场拿不全要记下为什么，但不能反过来毁掉这一行采集。
+ * 该域这次的现场：API 头部 JSON 原文落 evidence 目录。尽力而为——写不出证据
+ * 不能反过来毁掉这一行采集，所以失败只记 screenshotError 字段。
  */
-async function captureEvidence(domain, bodyText) {
-  const evidence = { screenshot: null, raw: null, screenshotError: null };
-  if (bodyText) {
-    try {
-      evidence.raw = writeRawEvidence({ outPath, domain, text: bodyText, redact: redactSecrets });
-    } catch (e) { console.error(`[batch] raw evidence failed for ${domain}: ${redactSecrets(e.message || e)}`); }
-  }
-  const shot = screenshotPaths(outPath, domain);
+function rawEvidencePath(domain, data) {
   try {
-    await opencli(['browser', launched.session || session, 'screenshot', shot.abs], { env: launched.env, timeoutMs: 60_000 });
-    evidence.screenshot = shot.rel;
+    return writeRawEvidence({ outPath, domain, text: JSON.stringify(data, null, 2) });
   } catch (e) {
-    evidence.screenshotError = redactSecrets(e.message || String(e)).slice(0, 300);
+    console.error(`[batch] raw evidence failed for ${domain}: ${String(e.message || e).slice(0, 200)}`);
+    return null;
   }
-  return evidence;
 }
 
-let n = 0;
-let consecutiveIncomplete = 0;
-for (const domain of todo) {
-  n += 1;
-  const startedAt = Date.now();
-  let row;
-  let lastRead = null;
-  try {
-    // 捕获返回值而不是丢掉——见 lib-tools-share.mjs 里 routeWindow 注释点名的
-    // 残留缺口：7 个 gotoInTool 调用点里之前只有 1 个把 routeWindow 写进输出。
-    // 这个脚本本身对同一批域名请求的是同一个固定窗口（28d），所以每域名的
-    // navRouteWindow 都是独立证据，跟下面 m.windowLabel（页面正文渲染出的
-    // 窗口文案）走两条不同的通道，都留进行内输出，不在这里互相替代。
-    await launched.automationWindow?.ensureVisible('before-navigation');
-    const landedNav = await gotoInTool(evaluate, `${appOrigin}${ROUTE}${encodeURIComponent(domain)}`, settle);
-    const navRouteWindow = landedNav?.routeWindow || null;
-    // 轮询认「总访问量」——那是只有数据渲染完才出现的内容词。左侧导航里的「网站表现」
-    // 是骨架挂载就有的菜单项，认它会秒过并读到空指标。
-    //
-    // **认到内容词也还不算数。** 「总访问量」和空态文案都会在真实数字水合之前
-    // 先出现一会儿，此时读到的是占位值。2026-08-23 实测：月访问 35 万的
-    // mmradar.gg 被读成 totalVisits: null。所以要连读到**指纹一致**才收下——
-    // 数值要两次一致，空态标记要三次，因为「没有数据」在加载中途出现得更频繁。
-    const settled = await captureStable({
-      read: async () => {
-        const s = await evaluate(`(() => ({
-        url: location.href,
-        visibilityState: document.visibilityState,
-        ready: /总访问量/.test(document.body?.innerText || ''),
-        noData: /抱歉，未找到与该搜索匹配的内容|没有足够的数据|Not enough data|我们没有此网站的数据/.test(document.body?.innerText || ''),
-        bodyText: (document.body?.innerText || '').slice(0, 20000)
-      }))()`);
-        lastRead = s;
-        if (launched.automationWindow) {
-          launched.automationWindow.recordRead({ vis: s?.visibilityState ?? null, label: `read:${domain}` });
-          if (s?.visibilityState === 'hidden') await launched.automationWindow.ensureVisible('hidden-read');
-        }
-        return s;
-      },
-      fingerprint: (s) => {
-        if (!String(s?.url || '').includes(`key=${encodeURIComponent(domain)}`)) return null;
-        if (s.ready) {
-          const m = deriveMetrics(s.bodyText.split(/\n+/).map((l) => l.trim()).filter(Boolean));
-          // **「标签在、一个字段都没解析出来」= 还没渲染，永远不收。**
-          // 旧代码会让它稳定通过并把空读数当采集完成。超时了记未完成，续跑会重测。
-          if (Object.values(m).every((v) => v === null)) return s.noData ? 'no-data' : null;
-          return JSON.stringify(m);
-        }
-        return s.noData ? 'no-data' : null;
-      },
-      // 空态多要一次确认：它出现得比真实数字早，只确认两次仍可能把水合中的页面判死。
-      needed: (print) => (print === 'no-data' ? 3 : 2),
-      timeoutMs: perDomainTimeout - (Date.now() - startedAt),
-      intervalMs: Number(flags['stable-interval'] || 3) * 1000,
-    });
-    const bodyText = settled.capture?.bodyText ?? lastRead?.bodyText ?? '';
-    const evidence = await captureEvidence(domain, bodyText);
-    const base = {
-      domain,
-      rawExcerpt: rawExcerptOf(redactSecrets(bodyText)),
-      evidence,
-      visibilityState: settled.capture?.visibilityState ?? lastRead?.visibilityState ?? null,
-      checkedAt: new Date().toISOString(),
-    };
-    if (!settled.stable) {
-      // **超时/不稳定不是结论，是这次没测成。** 记未完成，下次续跑会重测。
-      // 曾经把它当「没有数据」，结果一个自然流量 2.4K 的站被写成空读数——
-      // 渲染慢和没有数据在超时这一刻长得一模一样，而两者的含义正好相反。
-      row = {
-        ...base,
-        totalVisits: null,
-        globalRank: null,
-        countryRank: null,
-        parse: 'none',
-        stopReason: settled.fingerprint ? 'unstable' : 'timeout',
-        error: settled.fingerprint
-          ? `unstable: the page kept changing across ${settled.reads} reads (values still hydrating)`
-          : 'timeout: no parseable metric and no empty-state marker',
-      };
-    } else if (settled.fingerprint === 'no-data') {
-      // 页面正面写了「未找到匹配内容」，而且连着三次都这么写。这是**数据源自己的空态**，
-      // 采集到此完成——它是不是「流量太小」由 AI 对着截图和原文下判，脚本不下。
-      row = { ...base, totalVisits: null, globalRank: null, countryRank: null, parse: 'no-data-marker', stopReason: 'empty-state', error: null };
-    } else {
-      const lines = settled.capture.bodyText.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-      const m = deriveMetrics(lines);
-      // 面板会把请求的时间窗口悄悄改写（28d 请求可能落地成 6 个月累计），而
-      // 「总访问量」标签在两种窗口下长一个样，字段名分不出来。跟
-      // similarweb-query.mjs 的 scopeEvidence 是同一件事的批量版。
-      const windowMatchesRequest = compareWindowToRequest(m.windowLabel, REQUESTED_WINDOW_SEG).matches;
-      if (windowMatchesRequest === false && !acceptWindowFallback) {
-        // **确认不一致，且没有显式接受放宽——这一行判非成功，不影响其他域名。**
-        // 2026-09-13 二次复核：之前这里"照常收下 + 打个字段"仍然是"以为抓到了、
-        // 其实没抓到"——大多数读这份 JSONL 的代码只看 totalVisits，不会去翻
-        // windowMatchesRequest。stopReason 不在 COMPLETE_STOP_REASONS 里，
-        // 下次 --domains-file 续跑会自动重测这个域名（可能换到一个干净的标签页
-        // 就没事了）；真实数字仍然落盘在 unconfirmed* 字段，供人工排查。
-        row = {
-          ...base,
-          status: 'scope-mismatch',
-          totalVisits: null,
-          monthlyVisits: null,
-          globalRank: null,
-          countryRank: null,
-          windowLabel: m.windowLabel,
-          windowRequested: REQUESTED_WINDOW_SEG,
-          windowActual: m.windowLabel,
-          windowMatchesRequest,
-          navRouteWindow,
-          unconfirmedTotalVisits: m.totalVisits,
-          unconfirmedMonthlyVisits: m.monthlyVisits,
-          unconfirmedGlobalRank: m.globalRank,
-          unconfirmedCountryRank: m.countryRank,
-          parse: 'parsed',
-          stopReason: 'window-scope-mismatch',
-          error: `window_scope_mismatch: rendered window (${m.windowLabel}) does not match requested ${REQUESTED_WINDOW_SEG}. ` +
-            'Rerun with --accept-window-fallback to accept the rendered window as authoritative, or resume with a fresh session.',
-        };
-      } else {
-        row = {
-          ...base,
-          status: windowMatchesRequest === false ? 'ok-window-fallback-accepted' : windowMatchesRequest === null ? 'ok-unverified' : 'ok',
-          totalVisits: m.totalVisits,
-          // monthlyVisits 是页面另给的月度数字（窗口被改写时尤其该用它，而不是
-          // 拿 totalVisits 当月度硬用）。是否需要换算、换算完拿哪个数字过闸门，
-          // 是 AI/apply-traffic-screen 读证据时的判断，这里只把两个数字和窗口
-          // 原文都放出去，不替下游做选择。
-          monthlyVisits: m.monthlyVisits,
-          windowLabel: m.windowLabel,
-          windowRequested: REQUESTED_WINDOW_SEG,
-          windowActual: m.windowLabel,
-          windowMatchesRequest,
-          // 窗口本来不一致、但调用方显式接受放宽——留痕，不能让它看起来和
-          // "窗口本来就一致"是同一种确定性。
-          ...(windowMatchesRequest === false && acceptWindowFallback ? { windowFallbackAccepted: true } : {}),
-          // URL 通道的窗口漂移证据（跟上面文本通道并列，见 gotoInTool 调用处的注释）。
-          navRouteWindow,
-          globalRank: m.globalRank,
-          countryRank: m.countryRank,
-          parse: 'parsed',
-          stopReason: 'stable',
-          error: null,
-        };
+const chunks = [];
+for (let i = 0; i < todo.length; i += chunkSize) chunks.push(todo.slice(i, i + chunkSize));
+
+let stable = 0; let noData = 0; let failed = 0;
+try {
+  // 落地一次 + 断言落点在官方站：profile 用错 / 登录态失效会在这里当场抛，
+  // 不用等整张表都返回 HTML 才发现。
+  await openSimilarwebPro(session, null, { profile, windowMode, wait: openWait, timeoutMs: evalTimeoutMs });
+
+  let consecutiveChunkFailures = 0;
+  for (let i = 0; i < chunks.length; i += 1) {
+    const chunk = chunks[i];
+    let payload;
+    try {
+      payload = await proEval(session, fetchExpr(chunk), { profile, windowMode, timeoutMs: evalTimeoutMs });
+      if (!Array.isArray(payload)) throw new Error(`eval 返回形状不认识：${JSON.stringify(payload).slice(0, 200)}`);
+    } catch (error) {
+      consecutiveChunkFailures += 1;
+      const message = String(error?.message || error).slice(0, 300);
+      console.error(`[batch] chunk ${i + 1}/${chunks.length} 整块失败：${message}`);
+      for (const domain of chunk) {
+        appendFileSync(outPath, `${JSON.stringify(exceptionRow(domain, `chunk_failed: ${message}`))}\n`, 'utf8');
+        failed += 1;
       }
+      // 熔断：会话/登录态一旦死了，后面每个 chunk 都要付满一整个超时，而且全部记成未完成。
+      // **连续整块失败就停下换新会话，不要跑完整张表。**
+      if (consecutiveChunkFailures >= 3) {
+        console.error(`[batch] ABORT: ${consecutiveChunkFailures} 个连续整块失败——是会话/登录态死了，不是这些域名的问题。`
+          + '换新会话或重新登录 pro.similarweb.com 后重跑；exception 行会自动重测。');
+        process.exit(3);
+      }
+      continue;
     }
-  } catch (error) {
-    const evidence = await captureEvidence(domain, lastRead?.bodyText).catch(() => ({ screenshot: null, raw: null, screenshotError: 'evidence capture itself failed' }));
-    row = {
-      domain,
-      totalVisits: null,
-      globalRank: null,
-      countryRank: null,
-      parse: 'none',
-      stopReason: 'exception',
-      rawExcerpt: rawExcerptOf(redactSecrets(lastRead?.bodyText ?? '')),
-      evidence,
-      error: redactSecrets(error.message || error),
-      checkedAt: new Date().toISOString(),
-    };
+    consecutiveChunkFailures = 0;
+    for (const entry of payload) {
+      const row = headerRow(entry);
+      if (row.stopReason !== 'exception') row.evidence.raw = rawEvidencePath(row.domain, entry?.data || {});
+      appendFileSync(outPath, `${JSON.stringify(row)}\n`, 'utf8');
+      if (row.stopReason === 'stable') stable += 1;
+      else if (row.stopReason === 'empty-state') noData += 1;
+      else failed += 1;
+      console.error(`[batch] ${row.domain} → ${row.stopReason}${row.monthlyVisits !== null ? ` (${row.monthlyVisits})` : ''}`);
+    }
   }
-  appendFileSync(outPath, `${JSON.stringify(row)}\n`, 'utf8');
-  // 熔断：会话一旦挂了，后面每一个域名都要付满一整个超时，而且全部记成未完成。
-  // 实测挂过一次，连烧 48 个域名 60 秒。**连续失败就停下换新会话，不要跑完整张表。**
-  if (!isRowComplete(row)) {
-    consecutiveIncomplete += 1;
-    if (consecutiveIncomplete >= 5) {
-      console.error(`[batch] ABORT: ${consecutiveIncomplete} consecutive incomplete rows — the browser session is dead, not the domains. Rerun with a fresh --session; incomplete rows are retried automatically.`);
-      process.exit(3);
-    }
-  } else consecutiveIncomplete = 0;
-  console.error(`[batch] ${n}/${todo.length} ${domain} → ${row.stopReason}${row.totalVisits !== null && row.totalVisits !== undefined ? ` (${row.totalVisits})` : ''} ${Math.round((Date.now() - startedAt) / 1000)}s`);
-}
-console.error('[batch] done');
 } finally {
-  // 每次运行写 automationWindow：旁挂在 --out 旁边（JSONL 本体只放行），stderr 同步一行。
-  const automationWindow = launched.automationWindow?.summary() ?? { mode: 'fallback', fallbackReason: 'explicit-window-mode', windowMode: windowStrategy.launchWindow };
-  try { writeFileSync(`${outPath}.automation-window.json`, `${JSON.stringify(automationWindow, null, 2)}\n`, 'utf8'); } catch { /* 旁证写不出不影响采集 */ }
-  console.error(`[batch] automationWindow mode=${automationWindow.mode} moves=${automationWindow.moves ?? 0} tabSelects=${automationWindow.tabSelects ?? 0} visibleRatio=${automationWindow.visibility?.visibleRatio ?? '-'} chromeFrontmost=${automationWindow.frontmost?.chromeFrontmost ?? '-'}`);
-  await launched.releaseBrowserLocks?.();
+  if (!flags['keep-open']) await closeSession(session);
 }
+
+console.error(`[batch] done: ${stable} stable, ${noData} no-data, ${failed} incomplete → ${outPath}`);
+if (failed) process.exitCode = 1;

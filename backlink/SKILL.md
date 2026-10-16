@@ -43,6 +43,7 @@ Choose the closest entry. For more user phrasings and specific platform pages, r
 |---|---|
 | 去哪发、批量提交 | `node scripts/targets-select.mjs --stats`; <ref file="references/submission-lanes.md"/>; 100+ targets: <ref file="references/batch-campaign.md"/> |
 | 免费免注册、即时发布 | `data/free-channels.json` (`account:none`, `status:live`); <ref file="references/instant-publish.md"/> |
+| 目标要注册 / 邮箱验证 | <ref file="references/submission-lanes.md"/>; 用 **`mailbox` Skill** 收 OTP / 激活链接 |
 | 竞品外链、新机会 | <ref file="references/discovery-loop.md"/> and Semrush platform manual; write leads back to registry |
 | 质量、毒性、要不要 disavow | <ref file="references/link-quality-rubric.md"/> and `data/network-fingerprints.json` |
 | 发出去了没有 | <workflow-ref id="verify"/>; inspect exact public anchor and rel |
@@ -410,7 +411,25 @@ from one crawler's opinion.
 
 <rules type="non-negotiable">
 <rule id="no-coordinate-clicking">No coordinate-based "human-like" clicking.</rule>
-<rule id="no-bypass">No CAPTCHA, Turnstile, login, paywall, quota, or account-scope bypass.</rule>
+<rule id="no-bypass">No CAPTCHA, Turnstile, login, paywall, quota, or account-scope bypass. Logging in with an account you legitimately created is not a bypass — see `registration-uses-mailbox`.</rule>
+<rule id="registration-uses-mailbox">
+Creating a new account on a submission target is allowed, not a bypass, and it
+is how the `account` / `email-verify` cohorts actually get finished. When a
+target demands email verification, register with the **`mailbox` Skill**'s
+domain and poll it (read that Skill's SKILL.md) to pull the OTP or activation
+link, then open that link in the same browser session and continue. Never
+invent a third-party address, never reuse someone else's account, and never
+pay.
+
+**Give every target its own local part — never one fixed address.** The
+mailbox domain is a catch-all, so mint a per-target alias (the shared form is
+`project-target@mailbox-domain`, e.g. `shiptowp-saashub@…`) and record
+the alias → target mapping in the accounts store next to the password. The
+same address reused on every directory is a free fingerprint for the
+operators who compare sign-up logs. The labels `account` / `email-verify` in
+the target table still mean what they say — the gate is real; the mailbox is
+what clears it.
+</rule>
 <rule id="unmeasured-is-not-qualified">
 Never treat "not yet measured" as "qualified". The traffic gate only works if
 unmeasured rows are excluded from a batch rather than waved through.

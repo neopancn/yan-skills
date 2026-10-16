@@ -46,7 +46,10 @@ const DRIVERS = {
   'backlink/scripts/semrush-report.mjs':       { args: ['--report', 'keyword-magic', '--keyword', 'test', '--db', 'us'], expect: 'semrush-nav' },
   'backlink/scripts/semrush-traffic.mjs':      { args: ['--domain', 'example.com'], expect: 'semrush-nav' },
   'backlink/scripts/similarweb-batch.mjs':     { args: ['--domains', 'example.com', '--out', '@OUT@'], expect: 'similarweb-nav' },
-  'backlink/scripts/similarweb-keywords.mjs':  { args: ['--domain', 'example.com', '--seed', 'test'], expect: 'similarweb-nav' },
+  // 2026-10-13：本脚本改走官方 pro.similarweb.com 的同源 JSON API，不再经 launchTool；
+  // 它现在的浏览器入口是 openSimilarwebPro（lib-similarweb-pro.mjs），discoverDrivers
+  // 一并认这个入口，所以它仍在守卫范围内。会话名同样由 QUOTA_SITES 收敛成 similarweb-nav。
+  'backlink/scripts/similarweb-keywords.mjs':  { args: ['--seed', 'test'], expect: 'similarweb-nav' },
   'backlink/scripts/similarweb-query.mjs':     { args: ['--domain', 'example.com'], expect: 'similarweb-nav' },
   'backlink/scripts/tools-share-open.mjs':     { args: ['--tool', 'semrush'], expect: 'semrush-nav' },
   'backlink/scripts/tools-share-evidence.mjs': { args: ['--tool', 'semrush', '--report', 'backlinks-overview', '--domain', 'example.com', '--out-dir', '@OUT@'], expect: 'semrush-nav' },
@@ -61,16 +64,23 @@ const DRIVERS = {
   },
 };
 
-/** 扫出所有真正调用 launchTool 的脚本——表少一行就红，不靠人记得来加。 */
+/**
+ * 扫出所有真正驱动配额站的脚本——表少一行就红，不靠人记得来加。
+ *
+ * 认两个浏览器入口：`launchTool(`（Tools Share 启动器）与 `openSimilarwebPro(`
+ * （官方 Pro 直连，2026-10-13 起 similarweb-keywords 走这条）。无论走哪条，最终都
+ * 必须收敛到 QUOTA_SITES 的固定会话名，所以都在守卫范围内。
+ */
 function discoverDrivers() {
   const found = [];
   for (const dir of [backlinkScripts, demandScripts]) {
     const rel = path.relative(repo, dir);
     for (const name of readdirSync(dir)) {
       if (!name.endsWith('.mjs')) continue;
-      if (name === 'lib-tools-share.mjs') continue; // 定义 launchTool，不调用它
+      // 这两个文件各自「定义」一个入口，不调用它，别把它们自己当成驱动脚本。
+      if (name === 'lib-tools-share.mjs' || name === 'lib-similarweb-pro.mjs') continue;
       const source = readFileSync(path.join(dir, name), 'utf8');
-      if (/(?<![A-Za-z0-9_$.])launchTool\(|\.launchTool\(/.test(source)) found.push(`${rel}/${name}`.split(path.sep).join('/'));
+      if (/(?<![A-Za-z0-9_$.])(?:launchTool|openSimilarwebPro)\(|\.launchTool\(/.test(source)) found.push(`${rel}/${name}`.split(path.sep).join('/'));
     }
   }
   return found.sort();
@@ -128,7 +138,10 @@ function sessionUsedBy(relScript, args) {
     },
   });
   // `browser sessions` / `browser cleanup` 是子命令，不是会话名（同 opencli-core 的 BARE_BROWSER_SUBCOMMANDS）。
+  // 全局 flag（`--profile <id>`）可以排在 `browser` 之前（钉住 Pro 登录态就是要这么传的），
+  // 所以先把这层前缀剥掉，再找那条 `browser <session> …`。
   const line = readFileSync(log, 'utf8').split('\n')
+    .map((l) => l.replace(/^--profile\s+\S+\s+/, ''))
     .find((l) => l.startsWith('browser ') && !/^browser (sessions|cleanup)\b/.test(l));
   assert.ok(line, `${relScript} 没有向 opencli 发出任何 browser 命令——参数表可能过时了，先修参数再谈会话名`);
   return line.split(/\s+/)[1];
