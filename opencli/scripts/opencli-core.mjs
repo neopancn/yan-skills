@@ -13,7 +13,7 @@
 
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { appendFileSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 
@@ -217,12 +217,47 @@ function meaningfulStderr(stderr) {
     .trim();
 }
 
+let winOpencliEntry = null;
+async function resolveWinOpencliEntry() {
+  if (winOpencliEntry !== null) return winOpencliEntry;
+  winOpencliEntry = '';
+  // 这台机器上 npm 的 .cmd shim 是坏的（node 装在 C:，npm prefix 在 D:），
+  // `npm root -g` 走 shell 会报 'C:\Program' 不是内部或外部命令——所以不从 npm
+  // 找，改从 PATH 里的 opencli shim（sh 或 cmd 两种）反推它旁边的 node_modules。
+  const dirs = String(process.env.PATH ?? '').split(';').map((d) => d.trim()).filter(Boolean);
+  for (const dir of dirs) {
+    for (const shim of ['opencli', 'opencli.cmd']) {
+      if (!existsSync(join(dir, shim))) continue;
+      const entry = join(dir, 'node_modules', '@jackwener', 'opencli', 'dist', 'src', 'main.js');
+      if (existsSync(entry)) { winOpencliEntry = entry; return winOpencliEntry; }
+    }
+  }
+  return winOpencliEntry;
+}
+
 export async function run(command, args, options = {}) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+  return await new Promise(async (resolve, reject) => {
+    // Windows 上 opencli 是 npm 的 .cmd shim：spawn 它必须 shell:true，而 Node 的
+    // shell 模式不给参数加引号——eval 里带引号的 JS 片段会被 cmd.exe 打碎
+    // （实测 2026-09-19："too many arguments for 'eval'"）。改为直接用 node 调
+    // opencli 的 JS 入口，参数数组原样传递，不经过任何 shell。
+    let finalCommand = command;
+    let finalArgs = args;
+    const useShell = process.platform === 'win32'
+      && !command.includes('\\') && !command.includes('/') && !command.endsWith('.exe');
+    if (process.platform === 'win32' && command === 'opencli') {
+      const entry = await resolveWinOpencliEntry();
+      if (entry) {
+        finalCommand = process.execPath;
+        finalArgs = [entry, ...args];
+      }
+    }
+    const child = spawn(finalCommand, finalArgs, {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
+      // 走了 node 入口直调（finalCommand 已变成带路径的 node.exe）就绝不走 shell
+      shell: useShell && finalCommand === command,
     });
     let stdout = '';
     let stderr = '';
@@ -369,12 +404,15 @@ export function urlFromArgs(args) {
 }
 
 export function accessEntry(args, { ms, ok, bytes, error }) {
-  const session = args[0] === 'browser' && args[1] && !BARE_BROWSER_SUBCOMMANDS.has(args[1])
-    ? args[1] : null;
+  // `browser` 前面可能有全局 flag（`--profile <id>`，见 profileArgs），
+  // 按下标写死会把 profile 值当成会话名，整条访问账都归错人。
+  const at = args.indexOf('browser');
+  const session = at >= 0 && args[at + 1] && !BARE_BROWSER_SUBCOMMANDS.has(args[at + 1])
+    ? args[at + 1] : null;
   // eval 的参数里没有 URL——页面是上一次 open 留下的。所以按会话记住最后
   // 一次导航目标，让 eval 也能归到路由上；否则「访问频次」只数得到 open，
   // 而真正的取数几乎全发生在 eval 里。
-  let url = urlFromArgs(args.slice(2));
+  let url = urlFromArgs(args.slice(at + 2));
   if (url && session) rememberUrl(session, url);
   else if (session) url = recallUrl(session);
 
@@ -387,10 +425,10 @@ export function accessEntry(args, { ms, ok, bytes, error }) {
   //      起步，于是第一个非 `--` 的词 `-f` 成了动作。4 小时的日志里 45 条会话
   //      列表全记成了 `-f`，按动作分组时它们既不算 sessions 也不算别的。
   //   2. 判据写的是 `--` 开头，短横线选项漏网。改成任何 `-` 开头都算选项。
-  const action = args[0] === 'browser'
-    ? (BARE_BROWSER_SUBCOMMANDS.has(args[1])
-        ? args[1]
-        : args.find((a, i) => i >= 2 && !a.startsWith('-') && !VALUE_FLAGS.has(args[i - 1])) || 'unknown')
+  const action = at >= 0
+    ? (BARE_BROWSER_SUBCOMMANDS.has(args[at + 1])
+        ? args[at + 1]
+        : args.find((a, i) => i >= at + 2 && !a.startsWith('-') && !VALUE_FLAGS.has(args[i - 1])) || 'unknown')
     : args[0];
   return {
     ts: new Date().toISOString(),
@@ -452,23 +490,43 @@ export function normalizeWindowMode(value, fallback = 'background') {
  */
 export function resolveBrowserWindowArgs(args, options = {}) {
   const resolved = [...args];
+  // `--profile <id>` 是 opencli 的全局 flag，排在 `browser` **前面**（见 profileArgs）。
+  // 所以 `browser` 不一定在第 0 位——按下标写死会让 --window 静默注入失败，
+  // 调用方以为自己钉住了窗口模式，实际落在 CLI 默认值上。
+  const at = resolved.indexOf('browser');
   // `sessions` / `cleanup` 不是会话名，是子命令本身。给它们注入 --window 会让
   // CLI 把子命令当成会话名解析，命令整个失败——而调用方通常 allowFailure，
   // 于是失败被吞掉，snapshotSessions() 静默返回空数组，差集回收变成空操作。
-  if (resolved[0] === 'browser' && resolved[1] && !BARE_BROWSER_SUBCOMMANDS.has(resolved[1])
+  if (at >= 0 && resolved[at + 1] && !BARE_BROWSER_SUBCOMMANDS.has(resolved[at + 1])
       && !resolved.includes('--window')) {
     const requested = options.windowMode || options.env?.OPENCLI_WINDOW || 'background';
-    resolved.splice(2, 0, '--window', normalizeWindowMode(requested, 'background'));
+    resolved.splice(at + 2, 0, '--window', normalizeWindowMode(requested, 'background'));
   }
   return resolved;
 }
 
+/**
+ * `--profile <id>` 参数段（opencli 的全局 flag，必须排在 `browser` 前）。
+ *
+ * 本机可能同时连着多个 Browser Bridge profile，**各自的登录态是分开的**：
+ * 其中一个登着配额站的账号，另一个是默认档。全局默认档会被人或者别的任务切走，
+ * 而脚本从症状上看不出来——表现是「页面空了 / 403 / 落到登录页」，不是
+ * 「profile 用错了」。所以凡是绑定某个账号登录态的取数，一律显式钉住 profile，
+ * 别依赖默认档。
+ *
+ * 传空值/未传时返回空数组：不注入，走 CLI 自己的默认档（普通站点取数就是这样）。
+ */
+export function profileArgs(profile) {
+  const id = String(profile ?? '').trim();
+  return id ? ['--profile', id] : [];
+}
+
 export async function opencli(args, options = {}) {
-  let resolved = resolveBrowserWindowArgs(args, options);
+  let resolved = resolveBrowserWindowArgs([...profileArgs(options.profile), ...args], options);
   // Default `state` snapshots to AX (accessibility-tree) format — compact,
   // fewer tokens than the full DOM tree.  Callers can still override with an
   // explicit `--source dom`.
-  if (resolved[0] === 'browser' && !resolved.includes('--source')) {
+  if (resolved.indexOf('browser') === 0 && !resolved.includes('--source')) {
     const sub = resolved.findIndex((a, i) => i >= 2 && a === 'state');
     if (sub >= 0) { resolved = [...resolved]; resolved.splice(sub + 1, 0, '--source', 'ax'); }
   }
@@ -513,6 +571,7 @@ export function printJson(value) {
 export function buildBatchBrowserArgs(session, commands, options = {}) {
   const requested = options.windowMode || options.env?.OPENCLI_WINDOW || 'background';
   return [
+    ...profileArgs(options.profile),
     'browser', session, '--window', normalizeWindowMode(requested, 'background'),
     'batch', '--commands', JSON.stringify(commands),
   ];

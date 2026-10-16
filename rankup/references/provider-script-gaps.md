@@ -101,7 +101,7 @@ AI 生成供应商 Kie 的可选接入、能力与脚本统一见 [Kie 分支](i
 | 错误文本必须过 `redactSecrets()` | 否则凭据会漏进日志 |
 | 双出口 | `--out` 落盘 + `--json`/`printJson` |
 | 批量三铁律 | 同步前台、逐条 JSONL 追加、可续跑（照 `semrush-batch.mjs`） |
-| **解析逻辑放 lib，不放脚本** | Similarweb 的解析一律进 `lib-similarweb.mjs`。该 lib 头部注释就是为这条禁令存在的 |
+| **解析逻辑放 lib，不放脚本** | Similarweb 的 HTTP 取数层一律进 `lib-similarweb-pro.mjs`（SPA 头、登录/403 解释）；端点与参数拼装留在各自脚本 |
 | **新报表要同步登记存证** | 每加一个新脚本，同时在 `tools-share-evidence.mjs` 的 `REPORTS` 里加一条（path/ready/kind），`rankup audit` 才能自动获得它的存证能力。**这是唯一需要同步改的地方** |
 
 ### 反面写法
@@ -129,7 +129,7 @@ AI 生成供应商 Kie 的可选接入、能力与脚本统一见 [Kie 分支](i
 | 5 | `below-floor` 是终局，续跑不重测 | **兜住**。占位值 bug 制造过一次假 below-floor（**月访 35 万的站被判无流量**）。加 `confirmedBy` 字段 + `--recheck-below-floor`，而不是要求人删文件 |
 | 6 | `similar-sites` 无结构化解析 | **兜住**。竞品发现是高频动作，返回一坨文本 = 每个调用方各写一遍解析。在 lib 里补 `deriveSimilarSites()` |
 | 7 | Referrals 份额配对失败 | **保持现状，不要"聪明"地兜**。对不上就只给域名清单 + 明说未配对，这是**正确**做法。抽通用脚本时照搬这个保守逻辑 |
-| 8 | `lib-similarweb.mjs` 标签白名单是中文面板文案硬编码 | **兜住（便宜）**。面板切英文或改文案 → 全部字段静默变 null，与已记录的所有"静默错数"事故同型。解析全 null 且 bodyText 非空时返回 `{__parseFailed: true}`，**让调用方报错而不是写下一行空指标** |
+| 8 | ~~Similarweb 解析靠中文面板文案白名单硬编码~~ **已消除** | Similarweb 改走官方 Pro 同源 JSON API，字段直接来自接口响应，没有面板文案需要猜；"面板切英文/改文案 → 字段静默变 null"这一类事故面随之消失 |
 | 9 | 存证脚本的自定义页只存证不解析 | **不建议兜**。存证与取数是两件事，混起来会让脱敏保证变复杂 |
 | 10 | `captureStable` 是唯一护栏但容易抄漏 | **兜住**。加静态检查：任何 import 了 `launchTool` 且写出 metrics/JSONL 的脚本，必须同时 import `captureStable` |
 

@@ -111,7 +111,7 @@
 |---|---|---|
 | `ground-truth.mjs` | 配额站页面双证人采集（穿透 shadow DOM 的 census + 截图，成对落盘） | 只采集不判断，判断交给 AI 对质两个证人 |
 | `semrush-batch.mjs` / `semrush-keyword.mjs` / `semrush-overview.mjs` / `semrush-report.mjs` / `semrush-traffic.mjs` | Semrush 各维度报表读取（域名概览/关键词/自然排名/反链/流量与市场） | 同上，均明确写"只采集，不判断" |
-| `similarweb-batch.mjs` / `similarweb-keywords.mjs` / `similarweb-query.mjs` | Similarweb 各维度报表读取 | 同上 |
+| `similarweb-batch.mjs` / `similarweb-keywords.mjs` / `similarweb-query.mjs` | Similarweb 各维度报表读取（走官方 Pro 同源 JSON API，不渲染页面） | 同上，均只采集不判断 |
 | `tools-share-open.mjs` / `tools-share-node.mjs` / `tools-share-evidence.mjs` | 共享账号面板启动器/节点探测/证据抓取 | 节点探测是确定性轮询（按倍率从低到高试），不是语义判断；证据抓取只采集 |
 | `harvest-commenters.mjs` / `harvest-paginated.mjs` / `harvest.browser.js` | 从文章页收割评论者外链域名 / 大表翻页批采 / 登录态后台表格提取（legacy） | 纯抽取，无分支判断；`harvest.browser.js` 已被 `ground-truth.mjs` 取代，只保留供参考 |
 | `page-read.mjs` | 渲染竞品公开页面，取回正文/价格/导航链接 | 只读内容，不碰任何输入框，无判断 |
@@ -120,7 +120,7 @@
 
 ### 3.4 纯本地脚本（不适合，简列）
 
-`harvest-merge.mjs`（本地 CSV 去重合并）、`harvest-collect.sh`（本地下载目录等齐收拢）、`traffic-crosscheck.mjs`（纯离线两份 JSON 互相校验）、`lib-automation-window.mjs`（窗口虚拟屏放置，机械）、`lib-deep-dom.mjs`（shadow DOM 遍历工具库）、`lib-evidence-scene.mjs`（证据双落盘工具库）、`lib-cohort.mjs`（cohort/gate 推导逻辑，纯函数）、`lib-semrush-overview.mjs` / `lib-similarweb.mjs`（解析层共享库）、`lib-tools-share.mjs`（面板启动器共享库）、`opencli-core.mjs`（OpenCLI CLI 调用基础设施）、`self-test.mjs`（测试）、`validate-skill-xml.mjs`（SKILL.md 格式校验）——以上全部不碰"选哪个"这类判断，均为纯本地计算或基础设施库。
+`harvest-merge.mjs`（本地 CSV 去重合并）、`harvest-collect.sh`（本地下载目录等齐收拢）、`traffic-crosscheck.mjs`（纯离线两份 JSON 互相校验）、`lib-automation-window.mjs`（窗口虚拟屏放置，机械）、`lib-deep-dom.mjs`（shadow DOM 遍历工具库）、`lib-evidence-scene.mjs`（证据双落盘工具库）、`lib-cohort.mjs`（cohort/gate 推导逻辑，纯函数）、`lib-semrush-overview.mjs`（解析层共享库）、`lib-tools-share.mjs`（面板启动器共享库）、`opencli-core.mjs`（OpenCLI CLI 调用基础设施）、`self-test.mjs`（测试）、`validate-skill-xml.mjs`（SKILL.md 格式校验）——以上全部不碰"选哪个"这类判断，均为纯本地计算或基础设施库。
 
 ---
 
