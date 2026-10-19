@@ -31086,17 +31086,17 @@
       "route": "https://www.uneed.best/submit-a-tool",
       "name": "Add your product to Uneed | Uneed",
       "kind": "startup-launch",
-      "gate": "account",
+      "gate": "captcha-interactive",
       "gates": [
-        "account"
+        "captcha-interactive"
       ],
-      "cohort": "account",
+      "cohort": "captcha",
       "payment": "unknown",
       "price": null,
       "priceCheckedAt": null,
       "status": "gated",
       "sourceList": "flaqai/backlink_skills Free-backlink-list.md",
-      "notes": "| 38 | [https://www.uneed.best/](<https://www.uneed.best/>) | Uneed（uneed.best）：是创业产品发布、公司发现或独立开发者资源平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 未收录 可收费 一次只能提交一个产品 | | 287 | [uneed.best](<https://uneed.best>) | Uneed（uneed.best）：是创业产品发布、公司发现或独立开发者资源平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 未收录 只能提交一个产品来排队 |",
+      "notes": "| 38 | [https://www.uneed.best/](<https://www.uneed.best/>) | Uneed（uneed.best）：是创业产品发布、公司发现或独立开发者资源平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 未收录 可收费 一次只能提交一个产品 | | 287 | [uneed.best](<https://uneed.best>) | Uneed（uneed.best）：是创业产品发布、公司发现或独立开发者资源平台。当前链接指向网站首页或相关功能页，具体入口需再次确认。 | — | 未收录 只能提交一个产品来排队 | | 2026-10-20 songprint 实测：/submit-a-tool 无需账号即可填（url/name→Preview），提交链路出现 CAPTCHA → staged-captcha。此前记录的 account 门槛不成立，改 captcha 档。",
       "lastProbedAt": "2026-08-19",
       "evidence": {
         "method": "anonymous-http",
