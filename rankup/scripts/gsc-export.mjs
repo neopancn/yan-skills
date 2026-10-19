@@ -86,6 +86,10 @@ mkdirSync(out, { recursive: true })
 // 改用 node 直跑包入口。npm prefix -g 一次定位，缓存结果。
 let ocEntry
 function opencliBin(args, opts) {
+  // OPENCLI_PROFILE：绑定账号登录态的取数必须显式钉住 profile（opencli-core 约定），
+  // `--profile <id>` 是全局 flag，必须排在 `browser` 前。
+  const prof = String(process.env.OPENCLI_PROFILE || '').trim()
+  const prefixed = prof ? ['--profile', prof, ...args] : args
   if (process.platform === 'win32') {
     ocEntry ??= (() => {
       const npm = spawnSync('npm', ['prefix', '-g'], { encoding: 'utf8', shell: true, timeout: 20000 })
@@ -93,9 +97,9 @@ function opencliBin(args, opts) {
       if (npm.status !== 0 || !prefix) throw new Error(`npm prefix -g 失败：${npm.stderr || `退出码 ${npm.status}`}`)
       return resolve(prefix.trim(), 'node_modules/@jackwener/opencli/dist/src/main.js')
     })()
-    return spawnSync(process.execPath, [ocEntry, ...args], opts)
+    return spawnSync(process.execPath, [ocEntry, ...prefixed], opts)
   }
-  return spawnSync('opencli', args, opts)
+  return spawnSync('opencli', prefixed, opts)
 }
 function cli(...parts) {
   const r = opencliBin(['browser', session, '--window', 'isolated', ...parts], { encoding: 'utf8', timeout: 45000, maxBuffer: 20 * 1024 * 1024 })
