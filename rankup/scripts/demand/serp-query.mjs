@@ -159,13 +159,11 @@ async function main() {
   const key = readToken(KEY_NAME);
   if (!key) {
     die(
-      `没有 serper.dev 的 API key，这个脚本跑不了。\n` +
-      `  1) 去 https://serper.dev/ 自助注册（免费 2500 次查询，不要信用卡），拿到 key；\n` +
-      `  2) 写进 ${'rankup/.env'} 的一行：${KEY_NAME}=你的key\n` +
-      `     或者临时 export ${KEY_NAME}=你的key\n` +
-      `  没有 key 时的替代选路（各家免费额度见 references 的需求源清单）：\n` +
-      `  SerpApi / Bright Data SERP / searchapi.io / DataForSEO 的 SERP 端点，\n` +
-      `  或者退一步用 官方 gefei CLI 的 serp（官方积分 API，按目录计费）。`,
+      `没有 serper.dev 的 API key，仅此可选 API 兜底不可用；公开 SERP 继续走浏览器。\n` +
+      `  1) 用浏览器：opencli google search ${JSON.stringify(keyword)} --lang en --limit 10 -f json\n` +
+      `     其他浏览器路线见 references/seo-serp.md「SERP 取数路线」；不要停下问用户要 key。\n` +
+      `  2) 可选兜底：已有授权与额度时，用 serper.dev（${KEY_NAME}）或官方 gefei CLI 的 serp；\n` +
+      `     serper key 可放环境变量或 rankup/.env；它不是 SERP 取数的前置条件。`,
     );
   }
 

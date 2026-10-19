@@ -3,7 +3,7 @@ name: backlink
 description: Use for backlink work - finding, qualifying, submitting, analyzing or verifying backlinks, directory and blog-comment placements, competitor link sources, anchors, toxic links and disavow, outreach templates, and reading Ahrefs, Semrush or Similarweb backlink and traffic reports (外链、反链、去哪发、提交目录、评论外链、发出去没有、毒性、disavow、竞品外链、竞品导流、数据面板). This Skill owns what to read from those reports and which placements to pursue. Not for generic logged-in browser driving, sessions or doctor faults (use opencli), and not for sitemap, IndexNow or Search Console indexing operations (use rankup); index-submission here is only a reference kept apart from backlinks.
 ---
 
-<skill name="backlink" version="3.3" body-format="xml">
+<skill name="backlink" version="3.3.1" body-format="xml">
 
 <why-xml>
 The frontmatter above stays YAML because the Skill loader reads it for
@@ -65,7 +65,7 @@ node scripts/paid-platform-registry.mjs list --min-sites 2
 <law id="no-multi-tab-api">Do not use `tab new`, `tab select`, or `open --tab` to hold several pages under one session name; use separate sessions.</law>
 <law id="no-literal-session-name">Never use a shared literal default session name; use `defaultSession(base)` or an explicit descriptive, unique name.</law>
 <law id="claim-handles-first">Claim all needed session handles before starting a parallel browser loop.</law>
-<law id="background-by-default">Use background for routine page work; report routes that need visible hydration use their script's virtual-display/active path.</law>
+<law id="background-by-default">Use dedicated for routine page work: a separate, unfocused window on a secondary display when available. Foreground requires an explicit option for human interaction. Quota-report routes retain their script's existing virtual-display/active strategy.</law>
 <law id="hidden-tabs-do-not-hydrate">A hidden, empty report is inconclusive. Check actual visibility and the value-bearing region; follow the route-specific readiness rule before calling it empty.</law>
 <law id="readiness-must-bind-to-this-query">Bind a report to the requested route, target, scope, and content before classifying values. Headers, skeletons, or a prior target's numbers do not prove readiness.</law>
 <law id="every-measurement-needs-two-witnesses">For unfamiliar report routes use `scripts/ground-truth.mjs`: pair a deep DOM census with a screenshot; scripts collect and the AI judges.</law>

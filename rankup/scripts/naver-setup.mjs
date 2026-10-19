@@ -18,6 +18,9 @@
  *   --sitemap-url <URL>    完整 sitemap 地址（默认 https://<site>/sitemap.xml）
  *   --session <名>         opencli 会话名（默认 naver-<site 简写>）
  *   --keep-session         完成后不关闭会话
+ *   RANKUP_EVIDENCE_ROOT   可指定取证根目录
+ *   verify                点击所有权验证；出现 CAPTCHA 返回 2，不代填。
+ *   2026-10-07: 修复 Vuetify 无 placeholder 输入框、图标按钮与新版 fill 参数。
  *
  * 依赖：opencli，且用户浏览器已登录 searchadvisor.naver.com。
  *
@@ -76,10 +79,11 @@ function usage() {
   console.log(`用法:
   node naver-setup.mjs status --site <域名>
   node naver-setup.mjs register --site <域名>
+  node naver-setup.mjs verify --site <域名>
   node naver-setup.mjs submit-sitemap --site <域名> [--sitemap-url <URL>]`)
 }
 
-if (!["status", "register", "submit-sitemap"].includes(action)) { usage(); process.exit(1) }
+if (!["status", "register", "verify", "submit-sitemap"].includes(action)) { usage(); process.exit(1) }
 if (!site) { console.error(`错误：${action} 需要 --site`); process.exit(1) }
 
 // 会话名要描述工作，但**不能只靠站点名区分**：两个任务同时处理同一个站会撞进
@@ -138,7 +142,7 @@ function waitPageReady(seconds = 20) {
 /* ── 取证 ─────────────────────────────────────────────────── */
 let evidence = null
 function evidenceDir() {
-  if (!evidence) evidence = newEvidenceDir("naver-setup")
+  if (!evidence) evidence = newEvidenceDir("naver-setup", process.env.RANKUP_EVIDENCE_ROOT ? { root: process.env.RANKUP_EVIDENCE_ROOT } : {})
   return evidence
 }
 let sceneN = 0
@@ -176,10 +180,11 @@ async function doStatus() {
   waitPageReady(20)
 
   const text = pageText(8000)
-  if (text.includes("로그인") || text.includes("Log in") || text.includes("Sign in")) {
+  if (text.includes("로그인") || text.includes("Log in") || text.includes("Sign in") || /ID或手机号|密码/.test(text)) {
     bail("login-text-seen", "页面文本命中 로그인/Log in——多半未登录 Naver（也可能是撞词，看截图）。请先在浏览器中登录 searchadvisor.naver.com")
   }
 
+  scene("site-list")
   console.log("── Naver Search Advisor 站点列表 ──")
 
   // 尝试用内部 API 获取列表（不受 CSRF 限制的 GET 请求）
@@ -237,7 +242,7 @@ async function doRegister() {
   waitPageReady(20)
 
   const text = pageText(8000)
-  if (text.includes("로그인") || text.includes("Log in") || text.includes("Sign in")) {
+  if (text.includes("로그인") || text.includes("Log in") || text.includes("Sign in") || /ID或手机号|密码/.test(text)) {
     bail("login-text-seen", "页面文本命中 로그인/Log in——多半未登录 Naver（也可能是撞词，看截图）。请先在浏览器中登录 searchadvisor.naver.com")
   }
 
@@ -257,7 +262,7 @@ async function doRegister() {
     )
   } catch {
     // 也可能是输入框直接在页面上
-    const hasInput = evalJs(`return !!document.querySelector('input[type="url"],input[type="text"][placeholder*="http"],input[placeholder*="사이트"],input[placeholder*="site"]')`)
+    const hasInput = evalJs(`return !!document.querySelector('input[type="url"],input[type="text"][placeholder*="http"],input[placeholder*="사이트"],input[placeholder*="site"],input[type="text"]')`)
     if (hasInput !== "true") {
       bail("add-site-entry-not-found", "找不到添加站点的入口（按钮和输入框都没匹配到）。需要登录还是结构变了，看截图。")
     }
@@ -265,15 +270,15 @@ async function doRegister() {
   settle(2000)
 
   // 填写站点 URL —— 先尝试 https://example.com
-  const inputSelector = `document.querySelector('input[type="url"],input[type="text"][placeholder*="http"],input[placeholder*="사이트"],input[placeholder*="site"],input[placeholder*="URL"],input[placeholder*="url"]')`
-  evalJs(`const el=${inputSelector};if(!el)throw new Error('找不到 URL 输入框');el.focus();el.value='';`)
-  cli(`type "${siteUrl}"`)
+  const inputSelector = `document.querySelector('input[type="url"],input[type="text"][placeholder*="http"],input[placeholder*="사이트"],input[placeholder*="site"],input[type="text"],input[placeholder*="URL"],input[placeholder*="url"],input[type="text"]')`
+  evalJs(`const el=${inputSelector};if(!el)throw new Error('找不到 URL 输入框');el.setAttribute('data-rankup-url','1');`)
+  cli(`fill "[data-rankup-url]" "${siteUrl}"`)
   settle(1000)
 
   // 点击确认/提交按钮
   try {
     stampAndClick(
-      `[...document.querySelectorAll('button')].find(b=>/확인|추가|등록|OK|Add|Submit/i.test(b.textContent.trim()))`,
+      `[...document.querySelectorAll('button')].find(b=>/확인|추가|등록|OK|Add|Submit|exit_to_app/i.test(b.textContent.trim()))`,
       "확인 按钮"
     )
   } catch {
@@ -291,11 +296,11 @@ async function doRegister() {
     console.log("⚠️ 可能需要以不同格式注册。尝试不带协议的域名...")
     // 清空重填
     evalJs(`const el=${inputSelector};if(el){el.focus();el.value='';}`)
-    cli(`type "${site}"`)
+    cli(`fill "[data-rankup-url]" "${site}"`)
     settle(1000)
     try {
       stampAndClick(
-        `[...document.querySelectorAll('button')].find(b=>/확인|추가|등록|OK|Add|Submit/i.test(b.textContent.trim()))`,
+        `[...document.querySelectorAll('button')].find(b=>/확인|추가|등록|OK|Add|Submit|exit_to_app/i.test(b.textContent.trim()))`,
         "확인 按钮（重试）"
       )
     } catch { /* ignore */ }
@@ -308,6 +313,13 @@ async function doRegister() {
 
 // ── tryGetVerificationMeta：获取验证用 meta 标签 ─────────
 async function tryGetVerificationMeta() {
+  // 2026-10-07: 新注册直接停在 ownership 页；先读当前页面，不能跳去 option 丢失验证信息。
+  const current = pageText(12000)
+  if (/naver-site-verification|HTML 파일|HTML 태그/.test(current)) {
+    scene("ownership-options")
+    console.log(current)
+    return
+  }
   // 尝试通过 API 获取验证密钥
   const verifyResult = evalJs(`
     try {
@@ -389,6 +401,23 @@ async function tryGetVerificationMeta() {
   }
 }
 
+// verify 只点所有权验证；遇 CAPTCHA 停止，不填写或绕过。
+async function doVerify() {
+  open(`https://searchadvisor.naver.com/console/verify?site=${encodedSiteUrl}`)
+  waitPageReady(20)
+  const before = pageText(12000)
+  if (/로그인|Log in|Sign in|ID或手机号|密码/.test(before)) bail("login-required", "未登录，停止")
+  stampAndClick(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='소유확인')`, "ownership-verify")
+  settle(1500)
+  const text = pageText(12000)
+  scene("verify-result")
+  console.log(text)
+  if (/자동등록|보안문자|보안 문자|보안절차|자동입력|captcha/i.test(text)) {
+    writeManifest(evidenceDir(), {script:"naver-setup", action, site, stopReason:"captcha-required"})
+    process.exitCode = 2
+  }
+}
+
 // ── submit-sitemap：提交 sitemap ─────────────────────────
 async function doSubmitSitemap() {
   // 直接导航到 sitemap 提交页面（参数是 ?site= 不是 ?url=）
@@ -396,7 +425,7 @@ async function doSubmitSitemap() {
   waitPageReady(20)
 
   const text = pageText(4000)
-  if (text.includes("로그인") || text.includes("Log in") || text.includes("Sign in")) {
+  if (text.includes("로그인") || text.includes("Log in") || text.includes("Sign in") || /ID或手机号|密码/.test(text)) {
     bail("login-text-seen", "页面文本命中 로그인/Log in——多半未登录 Naver（也可能是撞词，看截图）。请先在浏览器中登录 searchadvisor.naver.com")
   }
 
@@ -475,6 +504,7 @@ async function doSubmitSitemap() {
 try {
   if (action === "status") await doStatus()
   else if (action === "register") await doRegister()
+  else if (action === "verify") await doVerify()
   else if (action === "submit-sitemap") await doSubmitSitemap()
 } finally {
   if (!keepSession) {

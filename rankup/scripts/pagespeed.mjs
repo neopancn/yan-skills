@@ -20,77 +20,30 @@
  *    把 `requestAnimationFrame` 垫成 `setTimeout`、补发 `visibilitychange` 与
  *    `focus`：页面读到的确实变成 visible，**渲染照样不动**（元素数纹丝不动）。
  *    节流发生在浏览器层，不是页面读的那个标志位。
- * 3. **单靠 `opencli --window foreground` 不保证可见**：Chrome 整个 app 不在
- *    最前时，标签页仍然是 hidden——但这只说明「只加这一个开关不够」，不说明
- *    「无法做到」，见下方 2026-09-12 实测。
+ * 3. **历史 foreground 实测不保证持续可见**：当时 Chrome App 不在
+ *    最前时标签页仍为 hidden。这不代表 PSI 必须抢系统前台；当前使用 dedicated，
+ *    依据与未验证边界见下方 2026-10-04 修订。
  * 4. **慢站会跑很久**：一个低流量站连跑 240 秒都还在「Running analysis」。
  *    预算要给足，超时**不等于「没有数据」**。
  * 5. `hl=en` 生效，能把界面语言钉死（否则跟着浏览器语言走，读数正则会漂）。
  * 6. 网页版的跑分请求走的是 `_/PagespeedUi/data/batchexecute` 这个内部 RPC，
  *    参数是混淆过的，**不要试图直接调它**——它没有契约，随时会变。
  *
- * ── 2026-09-12 实测：无人值守跑通了 ─────────────────────────────────────
- * 上面第 3 条只证明了「单开一个开关不够」，不是「做不到」。组合两件事就能
- * 稳定拿到「标签页真的可见」这个前提，全程零人工：
- *   (a) 每次 `opencli browser <session> open <url>` 都带 `--window foreground`，
- *       把标签页本身钉在前台（不再是默认的 background）；
- *   (b) 等报告渲染期间顺带把 Chrome 这个 App 拉回前台，防止它整体被别的窗口
- *       抢到前台——(a) 只保证标签页在 Chrome 内部前台，App 级别的前台还是
- *       会被系统切走，两件事缺一不可（具体怎么落地见下面 2026-09-12 第三次
- *       实测，那版是最终实现）。
- *   实测：3 个 URL × 移动/桌面共 6 组，一次性全部出分，零重试，总耗时约 2
- *   分钟，全程无人操作。结论：**collect 默认就应该这样跑**，`plan`（人工打开
- *   链接）降级为兜底方案，只在这台机器不是 macOS、或 Chrome 仍被更强的前台
- *   抢占（比如全屏的另一个 App）导致仍报 tab-hidden 时才用。
+ * ── 窗口模式修订（2026-10-04）──────────────────────────────────────────
+ * 默认使用 `--window dedicated` 专用窗口，不借用用户当前窗口、不抢系统焦点；
+ * 窗口位置由 OpenCLI 的专用窗口布局管理，本轮未验证副屏落位。扩展会把会话标签设为专用窗口
+ * 的活动标签，满足 PSI 的可见性要求，无需把用户窗口拉到前台。
+ * 依据：2026-10-04 任务 brief 提供的本机实测——另一进程已使用 dedicated
+ * 窗口在 pagespeed.web.dev 跑 PSI 并出结果。本轮不运行线上 PSI；跨环境及
+ * 窗口最小化、遮挡时的表现未验证，不能保证所有环境都可见。
+ * `--no-foreground` 保留为兼容别名，等同默认；只有显式 `--foreground` 才
+ * 使用 foreground，并允许 hidden 时 activate Chrome 的旧兜底。这会抢用户
+ * 前台窗口，仅在用户明确要求看着时用。
  *
- * ── 2026-09-12 第三次实测：把「后台常驻进程」换成「轮询循环里顺手 activate」──
- * 最初 (b) 是 `spawn(..., { detached: true })` 起一个独立 bash 进程，每 15 秒
- * `osascript activate` 一次，父进程退出时靠 `process.on('exit'/'SIGINT'/
- * 'SIGTERM')` 兜底 kill 掉它——这个兜底本身没错，但事后复核发现整套「detached
- * 子进程 + 信号清理」都是不必要的复杂度：`collectOnce` 等报告出分用的
- * `waitForReady()` 本来就是一个每 `POLL_MS`（4 秒）轮询一次 `probe()` 的
- * 同步循环，运行期间父进程一直「醒着」，不需要另开一个进程来定时做同一件事——
- * 直接在这个已有的轮询循环里、每隔约 15 秒同步调一次 `osascript activate`
- * 即可达到完全相同的效果，且从设计上就不存在「进程被强杀、清理来不及跑，
- * 留下孤儿常驻进程」这类问题（没有 detached 子进程，也就没有孤儿）。已删掉
- * `startForegroundKeeper`/`stopForegroundKeeper` 和配套的信号清理，改为
- * `activateChromeIfDue()`，从 `waitForReady()` 内部调用。
- *
- * ── 2026-09-12 第四次改动（已证伪，见下方第五次）：曾改用 `opencli --window
- * active`，理由是想少抢 OS 焦点。**这个 `--window active` 值从未真实存在**：
- * 本机 opencli 1.9.0（扩展 1.1.1）`--window` 只接受 `background`（默认，复用
- * 当前窗口不抢焦点）/ `foreground`（raise + select，即同时做 tab 切前台与
- * window 聚焦两件事）/ `isolated`（在自己的窗口里开、不抢焦点）三档，没有
- * `active`——这条改动当时确实没有跑一次真实 collect 验证过，直接把没有的值
- * 传给了 opencli，`collect` 因此每次都在 `open` 这一步就以 `opencli-open-
- * failed` 失败，只能靠 `--no-foreground` 绕过。教训：连着两次「基于技术原理
- * 推断，尚未实测」的改动之间，第一次没做完的验证欠账不能拖到下一次改动里才发现。
- *
- * ── 2026-09-12 第五次改动：改回 `opencli --window foreground`，删除 `active` ──
- * 读 `opencli browser --help` 与 `~/.claude/skills/opencli/SKILL.md` 第三节
- * 「三个窗口模式」（本机权威口径，2026-09-12 复核）：`--window` 只有
- * `background`（默认）/ `foreground`（raise + select）/ `isolated` 三档。
- * `foreground` 本来就同时做 tab 切前台与 window 聚焦，天然满足「PSI 页面必须
- * 前台标签页才会渲染完成」这条 2026-08-31 就确认的硬要求（见文件头第 1 条），
- * 不需要再造一个只切 tab 不聚焦窗口的中间态。改动：
- *   以下为历史实现；当前 `--no-foreground` 使用 dedicated 专用窗口。
- *   `openSession()` 默认（`opt.foreground=true`）传 `--window foreground`；
- *     `--no-foreground` 当前传 `--window dedicated`，不借用用户窗口。
- *   `waitForReady()` 里 `activateChromeIfDue()` 兜底逻辑保留不动——`foreground`
- *     只保证 opencli 发起 `open` 那一刻抢到 window 聚焦，用户之后手动切走、或
- *     系统把 Chrome 挤到后台，仍可能让标签页重新变 hidden，连续
- *     `STUCK_HIDDEN_THRESHOLD` 次探测到 hidden 时再退化成 `osascript activate`
- *     依旧是需要的最后一道保险，只是触发频率应该比第四次改动之前（那版
- *     `--window active` 不聚焦窗口）更低。
- *   2026-09-12 本次改动后用 `node pagespeed.mjs collect https://nonogram-
- *   game.com/ --strategy both` 实测跑通：默认参数（不加 `--no-foreground`）
- *   两端（mobile/desktop）均 `stopReason: ready`，LHR 经 `window-global` 直接
- *   抠出，全程无人值守、零次报 `opencli-open-failed`。两端各触发了一次
- *   `activateChromeIfDue` 兜底（终端本身在前台跑测试脚本，把 Chrome App 挤到
- *   了后台，触发条件成立、行为符合设计），说明兜底仍然会用上，`--window
- *   foreground` 只保证 `open` 那一刻的可见性，不是「从此不再需要兜底」。
- *   结论：`collect` 默认参数即可用，不再需要 `--no-foreground` 绕过
- *   `opencli-open-failed`。
+ * 历史实测（2026-09-12）：foreground + 轮询内 activate 曾无人值守跑通，
+ * 但这不能证明 PSI 必须抢系统前台。旧版尝试过不存在的 `--window active`，
+ * 导致 open 失败；窗口模式须以实际支持值与实测为准，不凭原理推断。
+ * activate 兜底在同步轮询里执行，没有独立后台常驻进程；当前默认不调用它。
  *
  * ── 2026-09-12 第二次实测：从「读文字」改成「抠 LHR JSON」──────────────────
  * 之前 collect 只用 `document.body.innerText` 采页面文本证人——**只拿得到可见
@@ -134,37 +87,18 @@
  * `.rankup/baseline.md`，留空会在下一轮被读成「查过了，没问题」。
  *
  * 用法：
- *   **要实际拿分数，用 collect——这才是应该走的默认路径**：opencli 驱动本机
- *   真实可见的 Chrome，报告出分后直接抠完整 LHR JSON 落盘，2026-09-12 起已
- *   自动处理「标签页真前台可见」这个刚需，可无人值守稳定出分（细节见文件头
- *   2026-09-12 各段实测）。`plan` 只打印链接、不采数，是 collect 的**兜底**：
- *   拿到链接后必须在一个真实前台可见的浏览器标签页里手动打开，隐藏面板、
- *   无显示环境打开会卡在「Running analysis」永远不出分——这不是脚本的 bug，
- *   是 pagespeed.web.dev 网页版本身的限制（同源标签页必须真实可见渲染才会
- *   跑完分析）。只在这台机器没有 opencli、非 macOS、或 Chrome 前台被更强
- *   抢占导致 collect 持续报 tab-hidden 时，才退化用 plan。
- *
  *   node pagespeed.mjs plan <url...> [--strategy mobile|desktop|both] [--hl en]
- *       打印要在浏览器里打开的 pagespeed.web.dev 链接、读数清单、baseline.md 记法。
- *       零依赖，任何环境都能跑，但不采数（见上方选择建议）。命令行不传子命令时
- *       参数解析缺省到这里（`parseArgs` 里 `cmd || "plan"`），这只是解析缺省值，
- *       不代表 plan 是推荐路径。
+ *       只打印链接与读数清单，不采数；缺省子命令为 plan。
+ *       手动打开时保持标签页可见，持续 hidden 时按历史实测可能卡住渲染。
  *   node pagespeed.mjs collect <url...> [--strategy both] [--budget 300]
- *       [--session NAME] [--out DIR] [--sleep 5] [--no-foreground]
- *       用 opencli 驱动本机 Chrome，报告出分后**直接抠完整 LHR JSON**（见上方
- *       2026-09-12 第二次实测），每个 (URL × 端) 落 `<tag>.lhr.json`（原始
- *       LHR）+ `<tag>.summary.json`（结构化摘要）+ `<tag>.summary.md`（人读，
- *       含每条未通过审计的逐项明细表）+ 截图/页面文本双证人，目录默认
- *       `.rankup/evidence/pagespeed-<ts>/`，`--out` 可指定别的目录。
- *       **默认可见性驱动、无人值守可跑通**（2026-09-12 第五次改动，见文件头）：
- *       open 带 `--window foreground`（opencli 真实支持的三档之一：raise +
- *       select），只有等待期间连续多次探测到 tab 仍是 hidden（用户后续切走、
- *       系统把 Chrome 挤到后台等）才退化成每约 15 秒一次 `osascript activate`
- *       再抢一下 OS 焦点（仅 darwin，不额外起进程）。`--strategy` 不传时 collect 默认
- *       `both`（移动 + 桌面）。标签页 hidden 或渲染不出来时自动 close 当前
- *       会话、重开一个新的，最多重试 3 次；每个 URL 之间 sleep（默认 5 秒，
- *       `--sleep 0` 关掉）避免连续打 PSI 后端。`--no-foreground` 关掉这整套
- *       可见性驱动（含兜底），退回旧的「人守在电脑前」用法。
+ *       [--session NAME] [--out DIR] [--sleep 5] [--foreground|--no-foreground]
+ *       推荐采数路径：默认 dedicated 专用窗口，报告出分后抠完整 LHR JSON。
+ *       每个 (URL × 端) 落 lhr.json + summary.json + summary.md + 截图/页面
+ *       文本双证人，默认目录 `.rankup/evidence/pagespeed-<ts>/`。
+ *       持续 hidden 或渲染不出来时 close 重开，最多重试 3 次；每个 URL 之间
+ *       sleep 默认 5 秒（`--sleep 0` 关闭）。`--no-foreground` 等同默认；
+ *       `--foreground` 会抢用户前台窗口，仅在用户明确要求看着时用。
+
  */
 
 import { execFileSync } from "node:child_process";
@@ -207,7 +141,7 @@ function parseArgs(argv) {
     budget: DEFAULT_BUDGET_S,
     session: null,
     help: false,
-    foreground: true,
+    foreground: false,
     out: null,
     sleep: DEFAULT_SLEEP_BETWEEN_S,
   };
@@ -222,6 +156,7 @@ function parseArgs(argv) {
     else if (a === "--session") opt.session = argv[++i];
     else if (a === "--out") opt.out = argv[++i];
     else if (a === "--sleep") opt.sleep = Number(argv[++i]);
+    else if (a === "--foreground") opt.foreground = true;
     else if (a === "--no-foreground") opt.foreground = false;
     else if (a.startsWith("-")) die(`未知参数：${a}`);
     else if (!cmd && (a === "plan" || a === "collect")) cmd = a;
@@ -242,15 +177,15 @@ function strategies(s) {
 
 const HELP = `PageSpeed 取数（走网页版 pagespeed.web.dev，**不需要 key、不占配额**）
 
-要拿分数用 collect——它是应该走的默认路径（opencli 驱动真实可见的本机 Chrome，
-直接落盘完整 LHR JSON，2026-09-12 起自动处理前台可见性，可无人值守稳定出分）。
-plan 只打印链接、不采数，是没有 opencli / 非 macOS / Chrome 前台被抢占时的
-兜底：把链接贴进一个真实前台可见的浏览器标签页才会出分，隐藏面板或无显示
-环境打开会卡在「Running analysis」永远出不了分——这是 pagespeed.web.dev 网页版
-本身的限制，不是这个脚本的 bug。
+要拿分数用 collect——推荐采数路径，opencli 驱动本机 Chrome，直接落盘完整 LHR JSON。
+默认使用 dedicated 专用窗口，扩展把会话标签设为该窗口活动标签，满足 PSI 可见性。
+2026-10-04 brief 提供的本机实测已在 dedicated 窗口出分；本轮不重跑线上 PSI，
+跨环境及最小化、遮挡时的表现未验证。窗口位置由 OpenCLI 的专用窗口布局管理，本轮未验证副屏落位。
+plan 只打印链接、不采数，是没有 opencli 或 collect 持续失败时的兜底；
+手动打开时保持标签页可见，历史实测 hidden 会卡在「Running analysis」。
 
   node pagespeed.mjs collect <url...> [--strategy both] [--hl en] [--budget 300]
-      [--session NAME] [--out DIR] [--sleep 5] [--no-foreground]
+      [--session NAME] [--out DIR] [--sleep 5] [--foreground|--no-foreground]
   node pagespeed.mjs plan <url...>    [--strategy mobile|desktop|both] [--hl en]
 
 示例（把 <url> 换成你真正要测的站，不要对不属于自己的第三方域名跑 collect）：
@@ -267,8 +202,7 @@ collect       默认路径，真正采数。用 opencli 驱动本机 Chrome，�
 plan          兜底方案，只打印要在浏览器里打开的链接 + 读数清单 + baseline.md 记法，
               不采数、零依赖。命令行不传子命令时参数解析缺省落到这里
               （parseArgs 里 cmd || "plan"），这只是解析缺省值，不代表 plan
-              是推荐路径——链接必须在真实前台可见的浏览器标签页里打开，否则
-              卡在「Running analysis」出不了分。
+              是推荐路径——手动打开链接时保持标签页可见，持续 hidden 可能卡住渲染。
 
 选项：
   --strategy      mobile / desktop / both。plan 默认 mobile，collect 默认 both
@@ -279,21 +213,16 @@ plan          兜底方案，只打印要在浏览器里打开的链接 + 读数
   --out           collect 的落盘目录，不传则用 .rankup/evidence/pagespeed-<ts>/
   --sleep         collect 每个 URL 之间的等待秒数，默认 ${DEFAULT_SLEEP_BETWEEN_S}（避免连续
                   打 PSI 后端），传 0 关掉
-  --no-foreground 把 open 的 \`--window foreground\` 换成 \`--window dedicated\`
-                  （也关掉轮询期间卡住才触发的 activate 兜底），退回旧的
-                  「人守在电脑前，标签页自己保持可见」用法
+  --foreground    显式使用 --window foreground，会抢用户前台窗口，仅在用户明确要求看着时用
+                  同时启用 hidden 时 activate Chrome 的兜底（仅 darwin）
+  --no-foreground 兼容别名，等同默认 --window dedicated，不启用 activate 兜底
   --help          显示帮助
 
-**默认可见性驱动、无人值守可跑通**（2026-09-12 第五次改动，实测见文件头）：
-collect 打开每个链接都带 \`--window foreground\`（opencli 真实支持的三档
-background/foreground/isolated 之一：raise + select）。只有等待渲染的轮询循环
-（每 ${POLL_MS / 1000} 秒探测一次）里连续多次探测到标签页仍是 hidden（用户后续切走、
-系统把 Chrome 挤到后台等），才退化成每约 15 秒一次 \`osascript activate\` 抢一下
-Chrome 这个 App 的系统前台（仅 darwin，不额外起进程）。标签页持续 hidden 或渲染不出来时会
-自动 close 会话重开，最多重试 ${MAX_REOPEN_ATTEMPTS} 次。
-**仍然报 tab-hidden 时，先查 Chrome 是不是被其他 App 抢了前台**（比如某个全屏
-应用），而不是退回人工跑；确实需要人工可读的旧行为时加 --no-foreground。请
-下次实测时留意观察这套「只切 tab 不抢焦点」的策略是否真的够用。
+collect 默认打开每个链接都带 --window dedicated，不默认 foreground 或 background。
+标签页持续 hidden 或渲染不出来时自动 close 会话重开，最多重试 ${MAX_REOPEN_ATTEMPTS} 次。
+仍报 tab-hidden 时检查专用窗口是否保持标签页可见；可用 plan 打印链接后手动读数。
+仅在用户明确要求看着时使用 --foreground；该模式连续多次探测到 hidden 才每约
+15 秒 activate Chrome 一次，会打断用户当前窗口。
 
 **现场返回「无数据」= CrUX 流量不足，不是 0、不等于通过**——原样记进 baseline.md。`;
 
@@ -363,12 +292,8 @@ function cli(session, args, { timeout = 120_000 } = {}) {
 function openSession(session, url, foreground) {
   // --window 是 `browser <session>` 之后、子命令之前的全局选项——
   // 挂在 `open` 之后不生效，2026-09-12 实测确认过顺序。
-  // 当前 --no-foreground 使用 dedicated 专用窗口，不借用用户当前窗口。
-  // 以下为旧版说明：opencli（本机 1.9.0，扩展 1.1.1）只接受 background /
-  // foreground（raise + select）/ isolated 三档，没有 `active`——见文件头
-  // 「第四次改动（已证伪）」与「第五次改动」。foreground 本身就会把这个 tab
-  // 切到它所在窗口的当前标签、并把该窗口聚焦到系统前台；轮询里如果之后又被
-  // 挤到 hidden，才靠 activateChromeIfDue() 兜底再抢一次。
+  // 默认与 --no-foreground 均为 dedicated；仅显式 --foreground 借用用户窗口。
+  // dedicated 的会话标签由扩展设为专用窗口活动标签，无需抢系统焦点。
   const openArgs = ["--window", foreground ? "foreground" : "dedicated", "open", url];
   return cli(session, openArgs, { timeout: 120_000 });
 }
@@ -810,9 +735,10 @@ function waitForReady(session, deadline, foreground) {
     const p = probe(session);
     if (p) last = p;
     if (p && p.gauges > 0) return { ready: true, last };
-    // 主路径不再无差别 activate——open 时的 `--window foreground` 应该已经让这个
+    // 仅显式 --foreground 启用 activate 兜底；默认 dedicated 不执行。
+    // foreground open 应该已经让这个
     // tab 保持可见。只有连续 STUCK_HIDDEN_THRESHOLD 次都探测到 hidden，才怀疑
-    // 窗口本身被遮挡/最小化，退化成抢一次 OS 焦点（--no-foreground 时完全不做）。
+    // 窗口本身被遮挡/最小化，退化成抢一次 OS 焦点。
     if (foreground) {
       if (p && p.visibility === "hidden") {
         hiddenStreak += 1;
@@ -920,8 +846,8 @@ function explain(stopReason) {
       return "报告已渲染，LHR 已抠出落盘";
     case "tab-hidden":
       return "标签页一直是 hidden —— **这是没出分的原因，不是这个站没有数据**。" +
-        "前台驱动已开着的话，查 Chrome 是不是被别的 App（比如某个全屏应用）抢了前台；" +
-        "已自动重试重开，仍不行就用 --no-foreground 把 Chrome 切到最前再跑一次";
+        "检查专用窗口的会话标签是否可见；已自动重试重开，仍不行用 plan 打印链接手动读数。" +
+        "仅在用户明确要求看着时才使用 --foreground（会抢用户前台窗口）";
     case "budget-exhausted":
       return "标签页可见但预算内没跑完 —— 慢站实测能跑几分钟。加大 --budget 重试；" +
         "**超时不等于没有数据**";
@@ -940,10 +866,11 @@ const FOREGROUND_ACTIVATE_INTERVAL_MS = 15_000;
 let lastForegroundActivateAt = 0;
 
 /**
- * 抢 OS 焦点的**兜底**，不是主路径。主路径是 `openSession()` 里的
+ * 仅显式 --foreground 启用的抢 OS 焦点兜底；默认 dedicated 不调用。
+ * 以下为 2026-09-12 foreground 路径的历史实测：`openSession()` 里的
  * `--window foreground`（opencli 真实支持的 raise + select 档），已经在
  * `open` 那一刻同时把 tab 切前台并把窗口聚焦到系统前台——2026-09-12 第五次
- * 改动实测确认默认参数即可出分。但 `open` 只保证那一瞬间的状态，之后只要有
+ * 改动实测确认当时的 foreground 参数可出分。但 `open` 只保证那一瞬间的状态，之后只要有
  * 别的东西（用户切走、终端本身在前台跑脚本把 Chrome 挤到后台等）抢走系统
  * 前台，标签页仍可能重新变 hidden——实测两端各触发过一次本函数，兜底并没有
  * 变得多余。`waitForReady()` 在连续 STUCK_HIDDEN_THRESHOLD 次探测到 tab
@@ -1015,11 +942,11 @@ function collect(urls, opt) {
   console.error(
     `[psi-web] 证据目录 ${dir}\n` +
     (opt.foreground
-      ? `[psi-web] 可见性驱动已开启：open 带 --window foreground（raise + select）` +
+      ? `[psi-web] 显式 --foreground：会抢用户前台窗口，open 带 --window foreground（raise + select）` +
         (process.platform === "darwin"
           ? "，卡住超过阈值才会退化成 activate 兜底一次（darwin，不额外起进程）。"
           : "（非 darwin，无 activate 兜底）。")
-      : `[psi-web] --no-foreground：退回旧行为，**把 Chrome 切到最前并保持那个标签页可见**——后台标签页出不了分。`),
+      : `[psi-web] dedicated 专用窗口：open 带 --window dedicated，不启用 activate 兜底。`),
   );
   try {
     for (let ui = 0; ui < urls.length; ui++) {

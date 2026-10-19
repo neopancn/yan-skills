@@ -46,7 +46,7 @@ const urls = fs.readFileSync(a.urls, 'utf8').split(/\r?\n/).filter(Boolean).slic
 // concurrent sessions each keep their own tab; three `tab new` calls inside one
 // session leave exactly one.
 const sessionFor = (url) => `${a.session}-${new URL(url).hostname.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 40)}`;
-const ocliIn = async (session, ...argv) => (await opencli(['browser', session, ...argv], { windowMode: 'background', timeoutMs: 90_000 })).stdout;
+const ocliIn = async (session, ...argv) => (await opencli(['browser', session, ...argv], { windowMode: 'dedicated', timeoutMs: 90_000 })).stdout;
 const evalIn = async (session, js) => { try { return JSON.parse(await ocliIn(session, 'eval', js)); } catch { return null; } };
 const evidenceDir = defaultSceneDir({ out: a.out || null, script: 'adapter-phpld' });
 
@@ -120,7 +120,7 @@ for (const url of urls) {
   }
   // 每行 state 落点一对现场（穿透 census + 截图），行内带路径。永不 throw。
   row.evidence = await captureScene({
-    session, outDir: evidenceDir, windowMode: 'background',
+    session, outDir: evidenceDir, windowMode: 'dedicated',
     tag: `${new URL(url).hostname.replace(/[^a-z0-9.-]/gi, '_')}-${row.state}`,
     note: `adapter-phpld ${url} → ${row.state}${row.error ? `: ${row.error}` : ''}`,
   });

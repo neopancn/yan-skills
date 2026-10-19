@@ -530,8 +530,8 @@ export function resolveBrowserWindowArgs(args, options = {}) {
   // 于是失败被吞掉，snapshotSessions() 静默返回空数组，差集回收变成空操作。
   if (at >= 0 && resolved[at + 1] && !BARE_BROWSER_SUBCOMMANDS.has(resolved[at + 1])
       && !resolved.includes('--window')) {
-    const requested = options.windowMode || options.env?.OPENCLI_WINDOW || 'background';
-    resolved.splice(at + 2, 0, '--window', normalizeWindowMode(requested, 'background'));
+    const requested = options.windowMode || options.env?.OPENCLI_WINDOW || process.env.OPENCLI_WINDOW || 'dedicated';
+    resolved.splice(at + 2, 0, '--window', normalizeWindowMode(requested, 'dedicated'));
   }
   return resolved;
 }
@@ -600,7 +600,7 @@ export function printJson(value) {
  * `src/runtime.ts` 的 `BrowserWindowMode`）：
  *   foreground  raise + select（夺 OS 焦点）
  *   active      只在窗口内选中该标签页，不节流，但不夺 OS 焦点
- *   background  复用当前窗口，不选中、不夺焦点（默认）
+ *   background  复用当前窗口，不选中、不夺焦点（显式指定）
  *   isolated    在自己的独立窗口里开，不抢当前窗口/焦点
  *
  * 2026-09-14 之前，`opencli()`/`batchBrowser()`/共享账号面板启动器模块的
@@ -642,7 +642,8 @@ export function printJson(value) {
 // 和其余四档一样能透传、能校验，不做能力探测。
 export const ALLOWED_WINDOW_MODES = ['foreground', 'active', 'background', 'isolated', 'dedicated'];
 
-export function normalizeWindowMode(value, fallback = 'background') {
+// 默认 dedicated：专用窗口不抢焦点，有副屏时由 CLI/扩展负责放置；显式模式和环境变量可覆盖。
+export function normalizeWindowMode(value, fallback = 'dedicated') {
   return ALLOWED_WINDOW_MODES.includes(value) ? value : fallback;
 }
 
@@ -653,10 +654,10 @@ export function normalizeWindowMode(value, fallback = 'background') {
  */
 /** 纯函数版的 batchBrowser 参数构造——同样的「能直接断言、不用起子进程」理由。 */
 export function buildBatchBrowserArgs(session, commands, options = {}) {
-  const requested = options.windowMode || options.env?.OPENCLI_WINDOW || 'background';
+  const requested = options.windowMode || options.env?.OPENCLI_WINDOW || process.env.OPENCLI_WINDOW || 'dedicated';
   return [
     ...profileArgs(options.profile),
-    'browser', session, '--window', normalizeWindowMode(requested, 'background'),
+    'browser', session, '--window', normalizeWindowMode(requested, 'dedicated'),
     'batch', '--commands', JSON.stringify(commands),
   ];
 }

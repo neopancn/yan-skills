@@ -127,7 +127,16 @@ function cli(action_, { timeout = 30000 } = {}) {
   }
 }
 function evalJs(js) { return cli(`eval '${`(()=>{${js}})()`.replace(/'/g, "'\\''")}'`) }
-function open(url) { cli(`open "${url}"`) }
+function open(url) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { cli(`open "${url}"`); return } catch (error) {
+      if (!/Navigation rejected/.test(error.message)) throw error
+      settle(2000)
+      if (evalJs("return location.origin+location.pathname") === new URL(url).origin+new URL(url).pathname) return
+      if (attempt === 2) throw error
+    }
+  }
+}
 function pageText(max = 4000) {
   return evalJs(`return (document.querySelector('main')||document.body).innerText.replace(/\\n{2,}/g,'\\n').slice(0,${max})`)
 }
@@ -215,7 +224,7 @@ function projectIdsForSite() {
   waitPageReady(25)
   waitFor(`return !!document.querySelector('input[placeholder="搜索"]')`, 30)
   stampAndType(`document.querySelector('input[placeholder="搜索"]')`, site, "项目搜索框")
-  settle(1000)
+  waitFor(`return [...document.querySelectorAll('[class*="projectHeader"] a[href*="projectId="]')].some(a=>new URL(a.href).searchParams.get('target')?.replace(/^\\*\\./,'').replace(/\\/.*$/,'')===${JSON.stringify(site)}) || /无符合搜索条件的项目|No projects/i.test(document.body?.innerText||'')`, 30)
   return evalJs(`
     const ids=new Set();
     for(const card of document.querySelectorAll('[class*="projectHeader"]')){
@@ -268,10 +277,10 @@ function stampAndClick(js, label) {
 
 /** opencli 新版 `type` 要求显式 target（不再支持只传 text 打到当前焦点元素）。
  *  这里复用 stampAndClick 的打标签思路：先用 evalJs 给目标元素打上唯一属性，
- *  再用该属性做 CSS 选择器传给 opencli type <target> <text>。 */
+ *  再用该属性做 CSS 选择器传给 opencli fill <target> <text>。 */
 function stampAndType(js, text, label) {
   evalJs(`const el=${js};if(!el)throw new Error('找不到: ${label}');el.setAttribute('data-rankup-target','1')`)
-  cli(`type "[data-rankup-target=\\"1\\"]" "${text}"`)
+  cli(`fill "[data-rankup-target=\\"1\\"]" "${text}"`)
   evalJs(`document.querySelector('[data-rankup-target]')?.removeAttribute('data-rankup-target')`)
   scene(`typed-${label.replace(/[^\w一-鿿-]/g, "_")}`)
 }

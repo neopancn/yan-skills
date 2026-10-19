@@ -2,7 +2,7 @@
 name: opencli
 description: 当用户要用本机已登录 Chrome 操作或验收网页（含测试自己的站、E2E、截图）、读取登录后台、抓取无 API 的数据、填表，或排查 OpenCLI doctor、会话、adapter 故障，或明确提到 opencli、浏览器自动化、标签页被抢时使用。公开文本先用 HTTP；话题调研交 agent-reach；SEO 与选词决策交 rankup；外链选点、提交与 Semrush、Similarweb 报表判读交 backlink；本 Skill 只负责浏览器驱动、会话与取数机制。
 metadata:
-  version: "1.8.1"
+  version: "1.8.2"
 ---
 
 # OpenCLI
@@ -19,6 +19,13 @@ OpenCLI 把任意网站、Electron 桌面应用和外部 CLI 收敛成一条 `op
 ---
 
 ## 零、选入口与沉淀
+
+验收入口：[`scripts/accept.mjs`](scripts/accept.mjs)。例如：
+```bash
+node <opencli-skill-dir>/scripts/accept.mjs --url http://localhost:3000/ --url /pricing --widths 1440,390 --height 900 --out /tmp/site-accept
+```
+
+**验收三铁律**：①只用 OpenCLI 驱动真实 Chrome，不用 Playwright、Firefox/Nightly 或沙箱浏览器；②固定验收做成脚本，只输出摘要，截图落盘；③能力缺口必须明说：新扩展支持真实 console/pageerror 捕获与持续 viewport set/reset，模板探测能力并验证读数；旧扩展 console 空返回不能当无错误，viewport 回退同源 iframe 并记录原因；外域只能检测记录，暂不能阻断。详见 [`references/browser-driving.md`](references/browser-driving.md#验收三铁律)。
 
 OpenCLI 负责用户真实 Chrome 中的页面操作和数据获取；调研主题先进 `agent-reach`，SEO / 外链决策先进 `rankup` / `backlink`。公开文本先用 `curl` 或公开 API；需要登录态、截图、E2E、填表或浏览器实测时用本 Skill。提交决策归业务 Skill。浏览器只用用户本机已登录的 Chrome；沙箱浏览器（Playwright / agent-browser / headless）在本机不作为选项，含测试自己的站、E2E、截图，只有用户明确点名时才用。
 
@@ -253,7 +260,7 @@ browser 与 adapter 都借不到时只建**一个**替身窗口共用；用户�
 
 | 错误做法 | 正确做法 | 为什么错 |
 |---|---|---|
-| `--window foreground`（除非用户要亲自操作） | 什么都不加（扩展 1.5.x 起默认 dedicated，不抢焦点）；只取数时显式 `--window background` | 实测会把用户的**活动标签页切走**（从第 1 个跳到第 3 个）。2026-08-23 那次测量里最前端**应用**不变；但之后的扩展在建标签页租约时会 `chrome.windows.update({focused:true})`，2026-09-13 起有用户反馈被反复抬到前台——「foreground 不换前台应用」已经不成立，别再据此放行 |
+| `--window foreground`（除非用户要亲自操作） | 什么都不加（扩展 1.5.x 起默认 dedicated，不抢焦点）；只取数也使用 dedicated 专用窗口 | 实测会把用户的**活动标签页切走**（从第 1 个跳到第 3 个）。2026-08-23 那次测量里最前端**应用**不变；但之后的扩展在建标签页租约时会 `chrome.windows.update({focused:true})`，2026-09-13 起有用户反馈被反复抬到前台——「foreground 不换前台应用」已经不成立，别再据此放行 |
 | 调 adapter 时用前台「方便看页面」 | `--keep-tab true` + `screenshot` / `state` | 调试是高频动作，一轮能打断十几次。标签页留着，用户想看自己切过去 |
 | 在旧扩展（< 1.0.33）上省略 `--window background` | 先看 `doctor` 的扩展版本；旧版就每条命令都显式带 | 旧版两层默认都是前台，省略等于每条命令都抬一次窗口 |
 | 给 `PUBLIC` / `LOCAL` 命令加 `--window` | 不加 | 它们不接受这个标志，会报 `unknown option '--window'`；这类命令本来也不开浏览器 |
@@ -417,13 +424,14 @@ opencli browser "$S" close
 
 ```bash
 opencli browser "$S" batch --commands '[
-  {"cmd": "open", "args": ["https://example.com"]},
-  {"cmd": "wait", "args": ["selector", ".loaded"]},
-  {"cmd": "state", "args": []}
+  {"cmd": "open", "args": {"url": "https://example.com"}},
+  {"cmd": "wait", "args": {"selector": ".loaded", "timeout": 10000}},
+  {"cmd": "state", "args": {"source": "dom"}}
 ]'
 ```
 
 返回 `{cmd, index, ok, result?, error?}` 数组；默认遇错继续，`--stop-on-error` 改为中止。
+修复版 CLI 任一步 `ok:false` 或 fill `verified:false` 整条命令退出非零，`index` 指出失败步；旧版可能退出 0，脚本仍须检查每步结果。截图参数用 `{path, width, height, fullPage, annotate}`。
 **条件逻辑**（每一步决定下一步）用顺序调用，不要硬塞进 batch。
 
 ### 模型驱动 `auto`（仅在已安装版本支持时）

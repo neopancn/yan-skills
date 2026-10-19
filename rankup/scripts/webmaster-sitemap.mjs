@@ -301,7 +301,12 @@ console.log()
 open(urls[platform])
 
 // 坑 4：登录态失效表现为找不到任何已知文案，而不是一个登录页。
-const anchor = findLabel(wanted("anchor"))
+let anchor = null
+const anchorDeadline = Date.now() + 30000
+while (!anchor && Date.now() < anchorDeadline) {
+  anchor = findLabel(wanted("anchor"))
+  if (!anchor) cli("wait time 1")
+}
 if (!anchor) {
   bail("anchor-not-found", `页面里找不到任何已知文案（试过：${(wanted("anchor") || []).join(" / ")}）。
   「登录态失效」「属性 ID 不对」「界面语言不在 LABELS 表里」「页面没加载完」在文本层不可分辨——看证据目录里的截图。

@@ -276,8 +276,7 @@ opencli browser <session> <command>
 也就是说，前台模式的 raise + select 里，**select 那一半是真的会执行的**——
 用户正在看的那一页被换掉了，而 macOS 层面的应用焦点没动，所以只查前台应用的测量看不见它。
 
-**规矩：后台是默认值，不要去覆盖它。** 你不需要显式传 `--window background`，
-传了也只是噪音——我们的 fork 里 CLI 与扩展两层的默认都是后台。
+**规矩：dedicated 是默认值。** CLI、扩展与 JS 封装默认使用不抢焦点的专用窗口；有副屏时由扩展放到副屏。`--window background` 仅在调用方显式选择时复用用户窗口。
 
 **`--window foreground` 只有一个正当用途：把一件必须由用户亲手做完的事交给他**
 （验证码、短信验证码、他明确说要看着）。那种时候你本来就是要他的注意力。
@@ -285,7 +284,7 @@ opencli browser <session> <command>
 把标签页留着，用户想看自己切过去；要机器看就用 `screenshot` / `state`，
 两者在后台模式下都正常工作。
 
-**想让自动化完全离开用户的窗口用 `--window isolated`**（后台 + 独立窗口），
+**自动化默认用 `--window dedicated` 离开用户窗口**；`isolated` 仍可显式指定，
 不要为此去用前台。
 
 `background` 对 `opencli browser` 与 adapter 命令（`opencli <site> …`）**都**复用用户当前的

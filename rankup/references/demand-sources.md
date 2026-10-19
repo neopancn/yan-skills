@@ -77,7 +77,7 @@ Google 实勘、市场参数、浏览器操作与结构化接口的证据边界�
 
 ### SERP 盘面怎么读（`serp-query.mjs` 的派生计数）
 
-`node scripts/demand/serp-query.mjs "<问法>"` 采集结构化结果与原始响应；计数、意图和任务缺口读法只见 [`seo-serp.md`](seo-serp.md#逐问法-google-读法)。
+采集顺序见 [SERP 取数路线](seo-serp.md#serp-取数路线)；`node scripts/demand/serp-query.mjs "<问法>"` 仅作可选 API 兜底，采集结构化结果与原始响应；计数、意图和任务缺口读法只见 [`seo-serp.md`](seo-serp.md#逐问法-google-读法)。
 
 采集字段 `domainMatch` 只按域名主标签的关键词词素匹配；命中不等于专营，品牌名站也可能漏判，保留原始结果供回读。
 
@@ -140,7 +140,7 @@ App 证据的移交与边界只见 [`research.md` App 分支](playbooks/research
 |---|---|---|
 | `GITHUB_TOKEN` / `GH_TOKEN` | `github-trending`（search/issues）、`github-skill-search` | trending 照跑；search 降到 10 次/分；**code search 直接不可用**，脚本提示改 `--mode repo` |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | `reddit-wishes` | 自动降级 RSS，能跑但慢且没有 score |
-| `SERPER_API_KEY` | `serp-query` | 报错并指路；改用官方 `gefei-keywords` Skill 的 SERP 工具 |
+| `SERPER_API_KEY` | 可选兜底 `serp-query` | 按 [SERP 取数路线](seo-serp.md#serp-取数路线)继续浏览器采集 |
 | `PRODUCTHUNT_TOKEN` | `boards.mjs producthunt` | 自动降级到浏览器路径（浏览器路径本来就更全） |
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | `game-newtitles --source igdb` | 清晰报错；其余 game 源不受影响 |
 | `TABAPI_KEY` | `domain-profile.mjs --provider tabapi` | 默认 webcafe 经官方 gefei CLI，需其已有授权，按积分余额计费；不需要 TABAPI_KEY |

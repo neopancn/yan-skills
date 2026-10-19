@@ -54,9 +54,12 @@ let industry = "其他业务活动"
 let session = `ga4-setup-${sessionSuffix()}`
 let windowSlot = "ga4-setup"
 let keepSession = false
+let streamAccount, streamProperty
 
 for (let i = 1; i < argv.length; i++) {
   const a = argv[i]
+  if (a === "--account") { streamAccount = argv[++i]; continue }
+  if (a === "--property") { streamProperty = argv[++i]; continue }
   if (a === "--domain" && argv[i + 1]) { domain = argv[++i]; continue }
   if (a === "--name" && argv[i + 1]) { name = argv[++i]; continue }
   if ((a === "--country" || a === "--timezone-country") && argv[i + 1]) { timezoneCountry = argv[++i]; continue }
@@ -72,13 +75,14 @@ for (let i = 1; i < argv.length; i++) {
 
 function usage() {
   console.log(`用法:
+  node ga4-setup.mjs create-stream --domain <域名> --account <账号号> --property <既有资源号>
   node ga4-setup.mjs status [--domain <域名>]
   node ga4-setup.mjs create --domain <域名> [--name <媒体资源名>] [--country 冰岛|巴西] [--timezone UTC] [--currency USD]
   --timezone-country 是 --country 的别名。时区列表没有 UTC 时用 --country/--timezone 显式指定。
   已有同域名媒体资源则复用，输出 Measurement ID（形如 G-<Measurement-ID>）。`)
 }
 
-if (!["status", "create"].includes(action)) { usage(); process.exit(1) }
+if (!["status", "create", "create-stream"].includes(action)) { usage(); process.exit(1) }
 if (action === "create" && !domain) { console.error("错误：create 需要 --domain"); process.exit(1) }
 if (domain && !name) name = domain.split(".")[0]
 domain = domain ? domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "") : domain
@@ -443,12 +447,19 @@ function createProperty() {
   settle(1500)
   scene("create-step4")
 
+  return createWebStream()
+}
+
+function createWebStream() {
   stampAndClick(
-    `[...document.querySelectorAll('button')].find(b => (b.innerText||'').trim()==='网站' && b.offsetParent)`,
+    `[...document.querySelectorAll('button,[role="menuitem"]')].find(b => (b.innerText||'').trim()==='网站' && b.offsetParent)`,
     "网站平台",
     "data-rankup-web",
   )
-  settle(1500)
+  if (!waitFor(`return !![...document.querySelectorAll('input')].find(el => el.offsetParent && /网站网址|Website URL|www\\.mywebsite/.test((el.getAttribute('aria-label')||'')+(el.placeholder||'')))`, 15)) {
+    stampAndClick(`[...document.querySelectorAll('button,[role="menuitem"]')].find(b => (b.innerText||'').trim()==='网站' && b.offsetParent)`, "重试网站平台")
+    waitFor(`return !!document.querySelector('input[placeholder]')`, 15)
+  }
   scene("web-stream-form")
 
   const urlId = evalJs(`
@@ -517,7 +528,21 @@ function doCreate() {
 
 try {
   if (action === "status") await doStatus()
-  else doCreate()
+  else if (action === "create-stream") {
+    if (!domain || !/^\d+$/.test(streamAccount) || !/^\d+$/.test(streamProperty)) throw new Error("create-stream 需要 domain/account/property")
+    goAdmin()
+    evalJs(`location.hash=${JSON.stringify(`#/a${streamAccount}p${streamProperty}/admin/streams/table`)};return true`)
+    waitFor(`return /添加数据流|Add stream/.test(document.body.innerText||'')`, 30)
+    const row = evalJs(`return !![...document.querySelectorAll('mat-row,[role="row"]')].find(x=>(x.innerText||'').split('\\n').some(t=>t.trim()==='https://'+${JSON.stringify(domain)}))`)
+    if (row === "true") throw new Error("已有同域名数据流，请先 status 读取；不重复创建")
+    if (evalJs(`return !![...document.querySelectorAll('button')].find(x=>(x.innerText||'').trim()==='网站' && x.offsetParent)`) !== "true") {
+      stampAndClick(`[...document.querySelectorAll('button')].find(x=>/添加数据流|Add stream/.test(x.innerText||'') && x.offsetParent)`, "添加数据流")
+    }
+    const id = createWebStream()
+    if (!id) throw new Error("未读到 Measurement ID")
+    scene("create-final", {id})
+    console.log(`ID: ${id}（既有媒体资源 ${streamProperty} 的数据流）`)
+  } else doCreate()
 } catch (e) {
   bail("execution-error", e.message)
 } finally {

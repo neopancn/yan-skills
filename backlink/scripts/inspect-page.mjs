@@ -24,7 +24,8 @@ const url = new URL(required(flags, 'url'));
 if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only http(s) URLs are supported.');
 const session = flags.session ? validateSession(flags.session) : defaultSession('backlink-work');
 const waitSeconds = Math.max(0, Math.min(15, Number(flags.wait || 3)));
-const windowMode = flags.window === 'foreground' ? 'foreground' : 'background';
+// --window foreground 仅供需要人工登录、验证码或亲自查看时显式使用。
+const windowMode = flags.window || process.env.OPENCLI_WINDOW || 'dedicated';
 const mode = ['auto', 'directory', 'comment'].includes(flags.mode) ? flags.mode : 'auto';
 const scanFunction = buildScanExpression(mode);
 

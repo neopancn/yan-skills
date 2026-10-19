@@ -21,7 +21,7 @@
 |---|---|
 | 「这个词能不能做」「这词多少量」「难不难」 | **rankup 自己**（官方 `gefei-keywords` Skill + `backlink/scripts/semrush-keyword.mjs`）。不要叫 keyword-research，它不带取数 |
 | 「帮我挖一批长尾词」→ 已经**有**几十上百个词，要分组排序 | **`/keyword-research`**。rankup 取数，它做意图分层与簇排序 |
-| 「帮我挖一批长尾词」→ 手上**只有**一个词根 | **rankup 自己**（`demand/word-roots.mjs` 扩形态 → `demand/serp-query.mjs --expand` 拿 relatedSearches/PAA → 再交给 keyword-research 分层） |
+| 「帮我挖一批长尾词」→ 手上**只有**一个词根 | **rankup 自己**（`demand/word-roots.mjs` 扩形态 → 按 [SERP 取数路线](seo-serp.md#serp-取数路线)拿相关搜索 / PAA → 再交给 keyword-research 分层） |
 | 「怎么被 AI 引用」「AEO/GEO 怎么做」→ 问的是**为什么、值不值** | **rankup 自己**（[`seo-ai-search.md`](seo-ai-search.md)：Google 官方指南、Information Gain、Preferred Sources；ChatGPT 侧的需求验证与推荐位见 [`seo-geo.md`](seo-geo.md)） |
 | 「怎么被 AI 引用」→ 问的是**这篇文章要写成什么形状** | **`/ai-seo`**（逐平台来源选择机制 + 内容改写模式 + llms.txt/OKF 知识包） |
 | 「加个结构化数据」「JSON-LD 怎么写」 | **`/seo-geo`**，且只读它的 `references/schema-templates.md`。rankup 全仓没有模板库 |
@@ -29,7 +29,7 @@
 | 「查一下 X 是怎么回事」「这个 Google 更新到底改了什么」 | **`/deep-research`**（方法论）+ **`/anysearch`**（执行）。rankup 的 demand/ 只吃结构化源 |
 | 「大家怎么评价 X」「小红书/推特/B站上怎么说」 | **`/agent-reach`**。这正是 capability-map §二「用户的原话」那一行缺的取数通路 |
 | 「这个领域现在有哪些 skill」「别人写过没」 | **`find-skills`**（原 `/skillsmp` 已于 2026-09-28 移除）。要「最近 7 天新冒出来的」才用 `demand/github-skill-search.mjs --mode recent` |
-| 「写篇中文长文」「这稿子 AI 味太重」 | **`/human-writing`** 起稿 → **`/shuorenhua`** 过滤。仅限中文；英文站内容两个都不适用 |
+| 「写篇中文长文」「这稿子 AI 味太重」 | **`/write`** 起稿、改稿并完成内置中文体检；英文站内容不套中文体检规则 |
 | 「扩词想不出角度了」 | **`/marketing-psychology`**（痛点/对比/决策词）+ **`/marketing-ideas`**（场景/人群词）。用法已写在 [`trends.md`](trends.md) W2 第一步 |
 | 「用 cf CLI」「管理 Cloudflare zone / DNS / 域名」 | **`/cf-cli`**（本仓库）；项目已有的构建与部署工作流见 [`cloudflare-stack.md`](cloudflare-stack.md) |
 | 「部署 Worker」「wrangler 报错」 | **`/wrangler`**（已在 [`cloudflare-stack.md`](cloudflare-stack.md) 接入）；要 D1/R2/Vectorize/Agents SDK 的深度用法才升到 `/cloudflare` |
@@ -45,7 +45,7 @@
 |---|---|
 | **它能干什么** | 按搜索量、难度、意图、簇给关键词排优先级。带四份判读参考：`keyword-intent-taxonomy.md`（意图分类法）、`keyword-prioritization-framework.md`（优先级框架）、`topic-cluster-templates.md`（簇模板）、`example-report.md` |
 | **关键事实** | 它的 description 原文是「from provided or connected data」——**它自己不联网、不带任何取数脚本**，`references/` 之外只有一个 SKILL.md |
-| **与 rankup 的分工** | **零冲突，是纯补充。** rankup 负责把数拿到：官方 `gefei-keywords` Skill（KD + top9 盘面 + linkBudget）、`backlink/scripts/semrush-keyword.mjs`（分国家量/KD/CPC + globalVolume，`--bulk` 一次 100 词）、`demand/serp-query.mjs`（SERP + relatedSearches + PAA）、`demand/word-roots.mjs`（词根扩形态）、`demand/keyword-value.mjs`（CPC 折算）。**这些都只出数值，不出分组。** 一旦词表超过二三十条、需要按意图切成 informational/commercial/transactional 并聚成内容簇，rankup 没有任何文档写这件事 |
+| **与 rankup 的分工** | **零冲突，是纯补充。** rankup 负责把数拿到：官方 `gefei-keywords` Skill（KD + top9 盘面 + linkBudget）、`backlink/scripts/semrush-keyword.mjs`（分国家量/KD/CPC + globalVolume，`--bulk` 一次 100 词）、[SERP 取数路线](seo-serp.md#serp-取数路线)（自然结果 + 相关搜索 + PAA）、`demand/word-roots.mjs`（词根扩形态）、`demand/keyword-value.mjs`（CPC 折算）。**这些都只出数值，不出分组。** 一旦词表超过二三十条、需要按意图切成 informational/commercial/transactional 并聚成内容簇，rankup 没有任何文档写这件事 |
 | **什么时候加载** | 手上**已经有**一张词表（≥20 条，带 volume/kd），要决定先写哪几篇、怎么组内链簇 |
 | **什么时候不要加载** | 只想知道单个词难不难（用 `kd`）；还没有词表（先用 rankup 取数）；只要 CPC 折算（用 `keyword-value.mjs`） |
 | **取舍理由** | 接。rankup 的选词链条到「拿到数值」为止就断了，[`trends.md`](trends.md) W2 第四步那张决策表是**单词维度**的，没有簇维度。这是真缺口 |
@@ -78,8 +78,8 @@
 | **deep-research 能干什么** | 一个纯方法论文件（单 SKILL.md，零脚本）：先广后深的分层检索、从初检结果里识别维度、多角度交叉。它自称「用它替代 WebSearch」 |
 | **anysearch 能干什么** | 带 CLI 的实时检索：`search`、`batch_search`（并行多查询）、`extract`（URL 全文抽取）、`get_sub_domains`（垂直领域检索，finance/academic/security/gaming 等）。匿名可用，有 key 则限流更松 |
 | **与 rankup 的分工** | **补充。** rankup 的 `demand/` 全是**结构化源**——榜单接口、商店 API、sitemap、SERP JSON。一旦问题变成「这个赛道 2026 年发生了什么」「这次核心更新到底改了什么」「这个平台的政策变了没」，rankup 手上一件工具都没有，只剩裸 WebSearch。deep-research 给方法，anysearch 给执行 |
-| **和 `demand/serp-query.mjs` 的区别** | 不是一回事。`serp-query.mjs` 要的是**「谁排在前面」**（organic 名次、首页/内页构成、域名命中计数——用来判竞争度），走 serper.dev，`SERPER_API_KEY` 免费 2500 次。anysearch 要的是**「这件事的事实是什么」**（正文内容）。**判竞争度不要用 anysearch，查事实不要用 serp-query** |
-| **什么时候加载** | 对账与段 1 的赛道与市场调研；排障时要搞清某次算法更新的事实；写内容前的素材收集（这也是 human-writing「五件材料」门槛的补料通道） |
+| **和 `demand/serp-query.mjs` 的区别** | 不是一回事。`serp-query.mjs` 要的是**「谁排在前面」**（organic 名次、首页/内页构成、域名命中计数——用来判竞争度），仅为 serper.dev 的可选兜底；默认采集见 [SERP 取数路线](seo-serp.md#serp-取数路线)。anysearch 要的是**「这件事的事实是什么」**（正文内容）。**判竞争度不要用 anysearch，查事实不要用 serp-query** |
+| **什么时候加载** | 对账与段 1 的赛道与市场调研；排障时要搞清某次算法更新的事实；写内容前的素材收集（为 `/write` 挖素材与起稿补充可靠来源） |
 | **什么时候不要加载** | 已知要查的是榜单/商店/sitemap/SERP（rankup 有专用脚本，更准更快） |
 | **取舍理由** | 接。deep-research 只有一个文件，成本近乎为零；anysearch 补的是 rankup 结构性缺失的一整类通路 |
 
@@ -105,16 +105,25 @@
 | **什么时候加载** | 动手写任何新脚本/新 Skill 之前先搜一遍；判断某个方向的供给饱和度 |
 | **取舍理由** | 接，但必须带上分工那一行——否则 AI 会拿 skillsmp 去做时间序信号，那是错的 |
 
-### `/human-writing` + `/shuorenhua` —— 中文内容的起稿与去 AI 味
+### `/write` —— 中文写作与去 AI 味
 
 | | |
 |---|---|
-| **human-writing 能干什么** | 中文长内容创作与改稿（知乎回答、论坛长帖、公众号、博客、教程、评测、人物稿）。核心是一道前置门槛：**非虚构长文动笔前必须列出至少五件具体材料，并注明各自来自用户哪句话或哪份可靠来源**；列不出就先研究、追问，或缩短成六百字短答，**不许用重复解释灌字数** |
-| **shuorenhua 能干什么** | 初稿之后的去 AI 味过滤：判场景（chat/status/docs/public-writing）→ 划 protected spans（术语、系统主语、引用原文不许动）→ 判力度档位 → 改写。它明确不是敏感词替换器，保留技术性 |
-| **与 rankup 的分工** | **补一整个空白。** rankup 生命周期段 7（7.2）起要持续产内容，但全仓**没有一条关于「文章怎么写」的规则**——[`seo-growth.md`](seo-growth.md) 只讲 Information Gain 要求内容含一手素材，不讲怎么落成句子。更巧的是这两件事是同一条判据的两侧：Google 的「非大众化内容才会被引用」和 human-writing 的「列不出五件材料就别写长稿」，说的是一回事 |
-| **顺序** | human-writing 起稿 → shuorenhua 过一遍 → 再按 `/ai-seo` 调结构 → 上线后 `seo-audit.mjs` 查 TDK 与密度 |
-| **硬边界** | **两个都是中文视角。** 英文站、日文站的内容两个都不适用，别硬套 |
-| **取舍理由** | 接。但只在真的要产中文长内容时加载，两个都不小 |
+| **能干什么** | 挖素材、定结构、按拍推进、诊断初稿与改稿；文案、标题与传播钩子、翻译与摘要、公众号排版。自带起稿、改稿与去 AI 味体检，不依赖别的 Skill |
+| **中文体检** | 内置 `scripts/check.py` 检测与清字符；按档位、文体处理，保留事实、术语、归因与限定，改完复查并通读 |
+| **与 rankup 的分工** | rankup 判断持续产内容的时机与 Information Gain 要求（见 [`seo-growth.md`](seo-growth.md)）；`/write` 负责把素材写成稿件。缺素材先收集，不编造事实、数据与来源 |
+| **顺序** | `/write` 起稿、改稿并完成中文体检 → 再按 `/ai-seo` 调结构 → 上线后 `seo-audit.mjs` 查 TDK 与密度 |
+| **硬边界** | 中文写作与中文体检按 `/write`；英文、日文内容不套中文体检规则 |
+| **什么时候加载** | 实际要写稿、改稿、写文案、翻译、摘要或排版时加载 |
+
+### `/blog` —— 我们自有的站内文章与模型页流程
+
+| | |
+|---|---|
+| **能干什么** | effect.video 一类站点的 model 页、blog、模型对比、产品对比：规定谁调研（X 交 Grok）、谁成文（Gemini）、谁 review（Claude Sonnet），资料先落 `sources/`、不自编，并含封面图与评判（哥飞评分、AITDK、ChatGPT 匿名问答） |
+| **与 rankup 的分工** | rankup 判断做哪一页、段 4 体检与上线；凡要把页面内容写出来，一律先读 [`blog/SKILL.md`](../../blog/SKILL.md) 再动手 |
+| **与 write / gefei / opencli 并列** | 自有联动 Skill：站内英文页面内容走 `/blog`，中文稿走 `/write`；评判阶段调用官方 `gefei-page`，浏览器取数落在 `opencli` |
+| **什么时候加载** | 写页面内容、写文章、model 页、模型对比、产品对比、补参考视频、封面图 |
 
 ### `/marketing-psychology` + `/marketing-ideas` —— 扩词的角度，不是词
 
@@ -164,18 +173,10 @@ rankup 自己只保留 `cf-zone-setup.mjs`（zone onboarding，**Wrangler 没有
 `seo-audit.mjs --sitemap` → `pagespeed.mjs collect`（默认路径，直接落 LHR JSON；`plan` 只出链接、不采数，仅兜底）读实验室+现场两套 → `ahrefs-site-audit.mjs report`（第二双眼睛）
 → 判读对 [`seo-box.md`](seo-box.md) + [`checklists.md`](checklists.md) 段 4。
 
-### `/write` —— 附属 Skill 装齐才加载，缺就用 find-skills 装齐
-
-`write` 是中文写作的**路由入口**，它把任务分派给 `writing-fragments`、`writing-shape`、
-`writing-beats`、`edit-article`、`humanizer-zh` 五个附属 Skill。它们不一定装在当前机器上：
-加载 `write` 之前先 `ls` 全局 Skill 目录确认五个都在；缺任何一个就按下面「缺 Skill 的处置」用
-`find-skills` 装上，再加载 `write`。装不上（源不存在、网络不通）时才退到 `/human-writing`（自带
-`references/` 五份，不依赖外部 Skill）+ `/shuorenhua`，并把退路原因写进回复。
-
 ### 缺 Skill 的处置：一律 find-skills 安装，不跳过、不现写替代
 
-本 Skill 点名的任何兄弟 Skill（`agent-reach`、`anysearch`、`deep-research`、`tuner`、`human-writing`、
-`shuorenhua`、`ai-seo`、`seo-geo`、`marketing-psychology`、`marketing-ideas`、`imagegen`、`backlink`、
+本 Skill 点名的任何兄弟 Skill（`agent-reach`、`anysearch`、`deep-research`、`tuner`、`write`、
+`ai-seo`、`seo-geo`、`marketing-psychology`、`marketing-ideas`、`imagegen`、`backlink`、
 `opencli`、`keyword-research`……）在当前机器上不存在时，处置只有一种：加载 `find-skills`，
 按名字搜索并安装（它会给出 `npx skills add <owner/repo> --skill <name> -g -y` 这类命令），装完再继续。
 为什么写死：每台机器、每个用户装的 Skill 集合都不一样，本文件只能保证「该用什么」，不能保证「已经装了」；
@@ -190,7 +191,7 @@ rankup 自己只保留 `cf-zone-setup.mjs`（zone onboarding，**Wrangler 没有
 | `skill-creator` | **不接** | 只在改 rankup 自身时才用得上，而那不是 rankup 的工作范围。改 Skill 走 [`evolution.md`](evolution.md) 的晋升门 |
 | `find-skills` | **已接入，找 Skill 的默认入口**（原排在 `skillsmp` 之后；`skillsmp` 已于 2026-09-28 移除） | 它已经写在 [`integrations.md`](integrations.md)（安装命令被 `validate-rankup.mjs` 的必需内容断言锁住），是「能力缺口 → 搜 Skill → 记进 `decisions.md`」那条流程的一环，**不要删**。但纯搜索场景 `/skillsmp` 的索引大得多（1.6M SKILL.md），**先 skillsmp 搜、搜到了再按 integrations.md 的流程装与登记** |
 | `agent-browser` | **不接** | 另一套浏览器自动化。rankup 全线绑 `opencli`（会话纪律、落盘 SOP、adapter 都在那）。两套混用会撞标签页与会话名 |
-| `tuner` / `tuner-ci` | **暂不接** | tuner 是按 credit 计费的取数中转（转录、社媒、检索、抓取）。它的检索与抓取能力已被 anysearch（匿名可用）、agent-reach（6 通道零配置）、`serp-query.mjs`（免费 2500 次）覆盖。**触发条件**：上述三条全部不可用，且用户已有 key，才谈 |
+| `tuner` / `tuner-ci` | **暂不接** | tuner 是按 credit 计费的取数中转（转录、社媒、检索、抓取）。它的检索与抓取能力已被 anysearch（匿名可用）、agent-reach（6 通道零配置）、[SERP 取数路线](seo-serp.md#serp-取数路线)（浏览器默认）覆盖。**触发条件**：上述三条全部不可用，且用户已有 key，才谈 |
 | `macmini` | **与 rankup 无关，不要加载** | 远程 Mac Mini 的 SSH 与 OpenClaw 诊断 |
 | `ops` | **与 rankup 无关，不要加载** | 另一个项目（K12）的服务器运维中枢，含该项目专有的域名、日志通道与 runbook |
 | `kollab-cli` | **与 rankup 无关，不要加载** | 另一个工作区平台的资源管理 CLI |

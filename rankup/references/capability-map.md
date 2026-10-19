@@ -91,7 +91,7 @@ SKILL.md 段 6 与取数纪律只一行指回本文件，改脚本入口时只�
 | 站群反查 | 给一个域名，找出同一主体运营的其它站 | `scripts/demand/site-network.mjs` | 「他还做了哪些站」 |
 | 域名画像 | 注册日期 / 月访问 / 流量结构 / 核心搜索词（只采不判；默认官方 gefei CLI，按积分余额计费，缺值未知） | `scripts/demand/domain-profile.mjs` | 「这站是新站吗、量哪来的」 |
 | 收入站案例复核 | 薄编排：串起 AITDK/Similarweb/Semrush/sitemap/KD，产出各源对照与倍差事实 | `scripts/demand/revenue-site-audit.mjs` | 「帖子说这站月入 X，真的假的」 |
-| SERP 取数 | serper.dev 拿 Google 第一页 organic + relatedSearches + PAA | `scripts/demand/serp-query.mjs` | 「这个词首页排的是什么」 |
+| SERP 取数 | 浏览器读取 Google 第一页自然结果、相关搜索与 PAA；API 为可选兜底 | [SERP 取数路线](seo-serp.md#serp-取数路线) | 「这个词首页排的是什么」 |
 | 词根扩展 | 给词根并扩成可投喂数据平台的候选串（挖词的起手式） | `scripts/demand/word-roots.mjs` | 「我只有一个词根」 |
 | 搜索框下拉联想 | Google / Bing / DuckDuckGo 三引擎的搜索框联想，按语种带 `--hl` / `--gl`；扩树第二层的入口（词根 → 联想词 → 叶子再联想一次即停），只采集、每引擎独立落 manifest，0 条不等于没词 | `scripts/demand/suggest.mjs` | 「帮我扩树」「这个词大家还怎么搜」 |
 | CPC 折算 | 将 CPC 折成经营背景读数（纯计算，不联网；判读见 [entry.md](playbooks/entry.md#选词判据只看两个)） | `scripts/demand/keyword-value.mjs` | 「这批词值多少钱」 |
@@ -160,7 +160,7 @@ SKILL.md 段 6 与取数纪律只一行指回本文件，改脚本入口时只�
 
 | 能力 | 一句话能干什么 | 入口 | 典型触发说法 |
 |---|---|---|---|
-| 默认建站栈 | TanStack Start Monorepo 脚手架（shadcn 初始化命令唯一）+ Cloudflare-first 资源选型 | [`references/cloudflare-stack.md`](cloudflare-stack.md) + [`lifecycle/stage-3-build.md`](lifecycle/stage-3-build.md) 段 3 | 「新建个站」「搭个工具站」 |
+| 默认建站栈 | 用户指定模板起站；未指定则用默认 shadcn 命令初始化 TanStack Start Monorepo + Cloudflare-first 资源选型 | [`references/cloudflare-stack.md`](cloudflare-stack.md) + [`lifecycle/stage-3-build.md`](lifecycle/stage-3-build.md) 段 3 | 「新建个站」「搭个工具站」 |
 | 设计组件库参考 | 外部 shadcn 生态组件库（21st.dev 等），做页面级设计（Hero / landing page / 动画动效）时先浏览找案例再实现 | [`references/design-references.md`](design-references.md) | 「做个好看的页面」「找设计参考」「Hero 怎么设计」 |
 | 脚手架四个坑 | 每一条都实际踩过的初始化陷阱 | [`lifecycle/stage-3-build.md`](lifecycle/stage-3-build.md) 段 3 · 3.1 | 「init 报错了」 |
 | 域名接入 Cloudflare | zone onboarding 并读回 NS 对（Wrangler 没有 zone 命令）；`status` 只读、`create` 建 | `scripts/cf-zone-setup.mjs` | 「把域名挂到 CF」 |
@@ -268,7 +268,7 @@ rankup 只判「什么时候发、发多少」（SKILL.md 段 6 一行指回这�
 
 | 能力 | 一句话能干什么 | 入口 | 典型触发说法 |
 |---|---|---|---|
-| 数据获取优先级 | 现有脚本 → HTTP API → 用户浏览器 + 脚本 → 手动 OpenCLI；**跳级的唯一理由是上一级不存在** | [`references/discipline.md`](discipline.md)「取数优先级」 | 任何取数开工前 |
+| 数据获取优先级 | 现有脚本 → HTTP API → 用户浏览器 + 脚本 → 手动 OpenCLI；**跳级的唯一理由是上一级不存在**；公开 SERP 按 [专用路线](seo-serp.md#serp-取数路线) | [`references/discipline.md`](discipline.md)「取数优先级」 | 任何取数开工前 |
 | 会话纪律 | 一会话一标签页、不要硬编码会话名、Bash 里禁用 `$$`、Semrush/Similarweb 不传 `--session` | `opencli` Skill `references/session-laws.md` | 「标签页被抢了」 |
 | 落盘 SOP | 本地接收端优先，端口不能写死；退路才是下载目录 | `opencli` Skill `references/data-extraction.md` | 「数据落哪」 |
 | 网页版 AI 工具驱动 | 只有聊天网页形态、且**确认没有 HTTP API** 的工具 | `scripts/chatbot-drive.browser.js` | 罕用；先确认无 API |
@@ -290,8 +290,8 @@ rankup 只判「什么时候发、发多少」（SKILL.md 段 6 一行指回这�
 | 实时检索与正文抽取 | `search` / `batch_search` 并行 / `extract` 取网页全文 / 垂直领域检索 | `/anysearch` | 「这次更新到底改了什么」 |
 | 中文社媒用户原话 | 小红书 / 推特 / B 站 / V2EX / Reddit / YouTube 等 15 平台取数 | `/agent-reach` | 「大家怎么评价 X」「小红书上怎么说」 |
 | Agent Skill 供给盘点 | 按关键词检索公开 Skill（**要时间序信号用 `demand/github-skill-search.mjs --mode recent`**）；原 `/skillsmp` 已于 2026-09-28 移除 | `find-skills` | 「这个领域有人做过没」「别重复造轮子」 |
-| 中文长内容起稿 | 中文创作与改稿，含「非虚构长文先列五件材料」的前置门槛 | `/human-writing` | 「写篇中文长文」 |
-| 去 AI 味 | 初稿后的模板感/表演腔清理，保留术语与责任主体 | `/shuorenhua` | 「这稿子 AI 味太重」 |
+| 中文长内容起稿 | 挖素材、定结构、起稿与诊断改稿，不编造事实与来源 | `/write` | 「写篇中文长文」 |
+| 去 AI 味 | 内置中文体检（`scripts/check.py`），按文体改稿并保留事实与术语 | `/write` | 「这稿子 AI 味太重」 |
 | 扩词：心理角度 | 痛点词 / 对比词 / 决策词 | `/marketing-psychology` | 「扩词想不出角度了」 |
 | 扩词：场景角度 | 不同职业 / 平台 / 用例的搜法；另有 139 条增长打法 | `/marketing-ideas` | 「还能从哪些角度想词」 |
 | Workers 部署与资源 | `wrangler deploy` / `types` / D1 迁移（已在 [`cloudflare-stack.md`](cloudflare-stack.md) 接入） | `/wrangler`；平台深度用法升 `/cloudflare` | 「部署一下」「wrangler 报错」 |
@@ -301,8 +301,7 @@ rankup 只判「什么时候发、发多少」（SKILL.md 段 6 一行指回这�
 - **`seo-audit` Skill ≠ `rankup/scripts/seo-audit.mjs`。** 同名但完全不是一回事：脚本是全站
   零配额取数，Skill 是一份**开场先问用户六个问题**的面谈式框架，与本 Skill「全权委托、直接做」
   的执行纪律冲突。**不要加载那个 Skill**，站点体检走 §八 的脚本链路。
-- **`/write` 不要加载**：它路由到的五个附属 Skill 在本机全局目录里一个都不存在。中文写作
-  直接用 `/human-writing` + `/shuorenhua`。
+- **中文写作统一用 `/write`**：它自带起稿、改稿与去 AI 味体检，不依赖别的 Skill。
 
 明确判「与 rankup 无关，不要加载」的：`ops`、`macmini`、`kollab-cli`、`gh-cli`、`skill-creator`、
 `find-skills`、`agent-browser`（会和 `opencli` 撞会话）、`tuner`/`tuner-ci`（付费通道，现有免费通路已覆盖）。

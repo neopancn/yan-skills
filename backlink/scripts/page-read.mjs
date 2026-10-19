@@ -32,7 +32,8 @@ const url = new URL(required(flags, 'url'));
 if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only http(s) URLs are supported.');
 const session = flags.session ? validateSession(flags.session) : defaultSession('page-recon');
 const waitSeconds = Math.max(1, Math.min(30, Number(flags.wait || 6)));
-const env = { OPENCLI_WINDOW: flags.window === 'foreground' ? 'foreground' : 'background' };
+// --window foreground 仅供需要人工登录、验证码或亲自查看时显式使用。
+const env = { OPENCLI_WINDOW: flags.window || process.env.OPENCLI_WINDOW || 'dedicated' };
 const linkFilter = typeof flags.links === 'string' ? new RegExp(flags.links, 'i') : null;
 const maxChars = Math.max(500, Math.min(60_000, Number(flags.chars || 8000)));
 

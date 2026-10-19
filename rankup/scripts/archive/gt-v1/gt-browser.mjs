@@ -217,7 +217,7 @@ function runBatch(js, session, { retry = true, open = false, attempt = 1 } = {})
   try {
     raw = execFileSync(
       OPENCLI,
-      ["browser", session, "--window", "background", "batch", "--commands", commands],
+      ["browser", session, "--window", "dedicated", "batch", "--commands", commands],
       { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
     );
   } catch (e) {

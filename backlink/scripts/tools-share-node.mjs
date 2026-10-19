@@ -206,7 +206,7 @@ async function readNodeOptionTexts(evalPage, tool) {
 async function runList({ session, toolKey, window: windowMode, wait, dashboardUrl }) {
   const tool = TOOLS[toolKey];
   if (!tool) throw new Error(`tool must be one of: ${Object.keys(TOOLS).join(', ')}`);
-  const env = { OPENCLI_WINDOW: windowMode === 'foreground' ? 'foreground' : 'background' };
+  const env = { OPENCLI_WINDOW: windowMode || process.env.OPENCLI_WINDOW || 'dedicated' };
   const locks = await acquireToolsShareBrowserLocks(session, toolKey);
   try {
     const evalPage = await ensurePanelRendered({ session, env, dashboardUrl, wait });
@@ -340,7 +340,8 @@ const toolKey = String(flags.tool || '').toLowerCase();
 if (!TOOLS[toolKey]) throw new Error(`--tool is required and must be one of: ${Object.keys(TOOLS).join(', ')}`);
 
 const session = flags.session ? validateSession(flags.session) : defaultSession('tools-share-node');
-const windowMode = flags.window === 'foreground' ? 'foreground' : 'background';
+// --window foreground 仅供人工登录或亲自查看面板时显式使用。
+const windowMode = flags.window || process.env.OPENCLI_WINDOW || 'dedicated';
 const wait = Number(flags.wait || 7);
 const dashboardUrl = process.env.TOOLS_SHARE_DASHBOARD_URL || DEFAULT_DASHBOARD;
 

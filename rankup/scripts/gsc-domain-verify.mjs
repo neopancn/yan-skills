@@ -12,6 +12,7 @@
  * 另一站实测已存在；2026-09-28 两站 status 再次实测可进入 sitemap 页面。
  * 2026-10-02：轮询资源弹窗与验证结果；DNS 提供商从 listbox 选择。
  * TXT 传播查询公共 DNS，避免本机负缓存阻塞；2026-10-02 实测 TXT 新增后 GSC 自动验证成功。
+ * 本机若设 HTTPS_PROXY，须将 api.cloudflare.com 加入 NO_PROXY（走代理会丢 TLS 握手）；例：NODE_USE_ENV_PROXY=1 NO_PROXY=api.cloudflare.com node scripts/gsc-domain-verify.mjs add-site --domain <域名>
  */
 import { opencliRun } from "./lib-opencli.mjs"
 import { cfAuthHeaders } from "./lib-cf-auth.mjs"
@@ -106,6 +107,22 @@ async function ensureTxt(content) {
   })
   return true
 }
+async function queryTxt(deadline) {
+  for (const endpoint of ["https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"]) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
+    try {
+      const res = await fetch(`${endpoint}?name=${encodeURIComponent(domain)}&type=TXT`, {
+        headers: { accept: "application/dns-json" },
+        signal: AbortSignal.timeout(Math.min(10000, remaining)),
+      })
+      if (!res.ok) continue
+      return await res.json()
+    } catch { /* 首选失败后尝试下一通道；瞬时 DNS 失败不终止轮询。 */ }
+  }
+  console.warn("警告：TXT 公共 DNS 查询失败，本次未见记录，继续轮询。")
+  return {}
+}
 try {
   if (accessible()) {
     console.log(`${property} 已验证；${sitemapListed ? "页面显示 sitemap.xml。" : "站点地图尚无 sitemap.xml。"}`)
@@ -146,10 +163,9 @@ try {
       if (!txt) throw new Error(`未从验证弹窗读到 TXT；弹窗摘要: ${result.slice(0,300)}`)
       console.log(`Cloudflare 验证 TXT ${await ensureTxt(txt) ? "已新增" : "已存在"}。`)
       const deadline = Date.now() + 20 * 60 * 1000
-      while (Date.now() < deadline) {
-        const dns = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=TXT`, {
-          headers: { accept: "application/dns-json" },
-        }).then(res => res.json())
+      while (true) {
+        if (Date.now() >= deadline) throw new Error("等待 TXT 传播超过 20 分钟")
+        const dns = await queryTxt(deadline)
         if ((dns.Answer || []).some(record => record.data.replace(/"/g, "") === txt)) break
         if (Date.now() + 60000 >= deadline) throw new Error("等待 TXT 传播超过 20 分钟")
         await new Promise(resolve => setTimeout(resolve, 60000))

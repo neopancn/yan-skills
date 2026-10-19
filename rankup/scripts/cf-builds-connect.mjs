@@ -10,7 +10,7 @@
  *     --branch main \
  *     --root-directory apps/web \
  *     --build-command "pnpm build" \
- *     --deploy-command "pnpm exec wrangler deploy --config dist/server/wrangler.json && pnpm run indexnow" \
+ *     --deploy-command "pnpm exec wrangler deploy --config dist/server/wrangler.json && node scripts/indexnow-submit.mjs --site-url <site-origin> --key <public-key> --days 2" \
  *     [--zone <domain>] \
  *     [--path-exclude ".rankup/**" --path-exclude "**(slash)*.md" --path-exclude ".claude/**" --path-exclude ".design/**"] \
  *       （通配符里连续出现 "*" + "/" 会提前闭合本段注释，示例里用 (slash) 代替，实际传参用真的 "/"）
@@ -25,7 +25,8 @@
  *   --branch            必需。触发构建的分支。
  *   --root-directory    必需。monorepo 内子项目目录（单仓库项目传仓库根目录名或按项目约定）。
  *   --build-command     必需。构建命令。
- *   --deploy-command    必需。部署命令。
+ *   --deploy-command    必需。部署命令；IndexNow 接法与实际配置/日志回读见
+ *                        references/search-platforms.md「挂进发布流程」。脚本路径相对构建根目录。
  *   --zone              可选。给部署用的 build token 额外加 Workers Routes Write（限定该
  *                        zone），只有 wrangler 配置里用 custom_domain / route 绑定了自定义
  *                        域名时才需要。

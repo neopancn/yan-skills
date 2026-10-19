@@ -277,7 +277,7 @@ async function main() {
   let launched;
   let receipt;
   try {
-    launched = await launchTool({ session, tool, node: flags.node, window: 'background', wait: Number(flags.wait || 7), timeout: Number(flags['launch-timeout'] || 60), evalTimeoutMs: Number(flags['eval-timeout'] || 180) * 1000, allowParallelSession: Boolean(flags['allow-parallel-session']) });
+    launched = await launchTool({ session, tool, node: flags.node, window: 'dedicated', wait: Number(flags.wait || 7), timeout: Number(flags['launch-timeout'] || 60), evalTimeoutMs: Number(flags['eval-timeout'] || 180) * 1000, allowParallelSession: Boolean(flags['allow-parallel-session']) });
     await gotoInTool(launched.evalPage, url, Number(flags.settle || 10));
     const options = { reloads: Math.max(0, Number(flags.reloads || 2)), timeoutMs: Number(flags.timeout || 120) * 1000, intervalMs: Number(flags['stable-interval'] || 3) * 1000 };
     const settled = await stablePage(launched.evalPage, spec, target, origin, options);

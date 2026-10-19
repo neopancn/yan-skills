@@ -4,6 +4,8 @@
 
 ## 段 7：变现与监控
 
+迭代新增入口按[建设中红线](../discipline.md#二十一禁止建设中内容与功能区域)执行：入口与实现同时交付，逐项跑通后再展示，并重扫本轮渲染内容。
+
 > **决定这一轮改什么之前先读** [`experiences/conversion.md`](../experiences/conversion.md)
 > （访客→注册、注册→付费、行为数据）与
 > [`experiences/zero-to-one.md`](../experiences/zero-to-one.md) 的「打磨 > 重构」与

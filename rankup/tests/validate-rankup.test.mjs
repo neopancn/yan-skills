@@ -259,6 +259,7 @@ test("release validator rejects removal of substantive release criteria", async 
   });
 });
 
+
 // 真实事故（2026-09-19）：rankup 在 zcode 里凭空消失，同仓库其它 Skill 正常。
 // description 一路加触发词加到 1834 字符，超了 Claude 规范的 1024 上限，
 // 严格按规范实现的加载器直接跳过整个 Skill——**不报错**。缺失比报错更糟，因为没人会去查。
@@ -285,5 +286,33 @@ test("release validator rejects a description without the YAML space after the c
     const result = validate(skillRoot);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /冒号后缺空格/);
+  });
+});
+
+
+test("release validator rejects missing Cloudflare loop cost protections", async () => {
+  await withSkillCopy(async (skillRoot) => {
+    for (const [file, phrase] of [
+      ["references/cloudflare-stack.md", "应用重新 `setAlarm()`"],
+      ["references/cloudflare-stack.md", "## 8.9 循环消耗与账单熔断红线"],
+      ["references/cloudflare-stack.md", "预算告警不是消费硬顶"],
+      ["references/checklists.md", "Cloudflare 循环消耗红线"],
+      ["references/lifecycle/stage-3-build.md", "cloudflare-stack.md#89-循环消耗与账单熔断红线"],
+      ["references/lifecycle/stage-4-prelaunch.md", "Cloudflare 循环消耗红线未通过"],
+      ["references/playbooks/site-review.md", "G6 循环与费用止损"],
+    ]) {
+      const target = path.join(skillRoot, file);
+      const original = await readFile(target, "utf8");
+      assert.ok(original.includes(phrase), phrase);
+      await writeFile(target, original.replaceAll(phrase, "[removed]"));
+      try {
+        const result = validate(skillRoot);
+        assert.equal(result.status, 1, `${file}: ${phrase}`);
+        assert.match(result.stderr, /missing required content|checklist gate/);
+      } finally {
+        await writeFile(target, original);
+      }
+    }
+
   });
 });

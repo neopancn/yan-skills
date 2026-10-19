@@ -326,8 +326,8 @@ Product Hunt API（每天拉前一天发布的产品）
 | Similarweb 扩出的关键词（broad + suggest） | 97,681 个 |
 | 按 KD / 搜索量初筛 + AI 二筛（按「精品工具页」的形状筛） | 剩 800 多个 |
 
-流水线用到的四个数据面：**Similarweb、SEMrush、Google SERP（serper.dev 一类）、
-关键词难度估算（哥飞版）**。最后一步很关键：**用 SERP API 去看这个词的实际搜索结果**——
+流水线用到的四个数据面：**Similarweb、SEMrush、Google SERP（serper.dev 一类仅为可选兜底，现行见 [SERP 取数路线](../seo-serp.md#serp-取数路线)）、
+关键词难度估算（哥飞版）**。最后一步很关键：**查看这个词的实际搜索结果**——
 比如「拿这个关键词做域名的站多不多」，直接判断赛道有没有被占。
 
 三条作者自己总结的心得，每一条都可以直接当规则用：

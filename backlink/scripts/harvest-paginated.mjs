@@ -346,7 +346,7 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
 
   const session = sessionForUrl(url, 'harvest-page');
-  const windowMode = 'foreground';   // hidden 出生的标签页永不水合
+  const windowMode = 'dedicated';   // hidden 出生的标签页永不水合
   const targetUrl = new URL(url);
   const target = targetUrl.hash || targetUrl.pathname;
 

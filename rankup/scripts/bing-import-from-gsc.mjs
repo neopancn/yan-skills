@@ -37,11 +37,22 @@ function browser(...parts) {
     { encoding: "utf8", timeout: 90000 }).trim()
 }
 function evalJs(source) { return browser("eval", `(()=>{${source}})()`) }
-function open(url) { browser("open", url); opened = true }
+function open(url) {
+  opened = true
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { browser("open", url); return } catch (error) {
+      if (!/Navigation rejected/.test(String(error.stderr || error.message))) throw error
+      browser("wait", "time", "2")
+      if (evalJs(`return location.origin+location.pathname`) === new URL(url).origin+new URL(url).pathname) return
+      if (attempt === 2) throw error
+    }
+  }
+}
 function inspect() {
   return JSON.parse(evalJs(`return {url:location.origin+location.pathname,
     text:(document.body?.innerText||'').slice(0,3000),password:!!document.querySelector('input[type=password]'),
-    permissions:!!document.querySelector('input[type=checkbox],[role=checkbox]'),
+    permissions:[...document.querySelectorAll('input[type=checkbox],[role=checkbox]')].some(e=>e.offsetParent!==null),
+    navigation:!!document.querySelector('button[aria-label="显示导航面板"],button[aria-label="选择网站"]'),
     buttons:[...document.querySelectorAll('button,a,[role=button]')].filter(e=>e.offsetParent!==null)
       .map(e=>({text:(e.innerText||e.getAttribute('aria-label')||'').trim().slice(0,90),
         href:e.getAttribute('href')||''})).filter(e=>e.text).slice(0,90),
@@ -78,7 +89,7 @@ function clickVisible(js, label) {
   click('[data-bing-target="1"]')
 }
 function isDashboard(page) {
-  return page.url.replace(/\/$/, "").endsWith("/webmasters") && /站点管理器|Site Explorer/i.test(page.text)
+  return page.url.replace(/\/$/, "").endsWith("/webmasters") && (page.navigation || /站点管理器|Site Explorer/i.test(page.text))
 }
 function recoverSession({ preview = false } = {}) {
   const deadline = Date.now() + 90_000
@@ -102,7 +113,15 @@ function recoverSession({ preview = false } = {}) {
         browser("wait", "time", "1")
         continue
       }
-      browser("click", "[data-identifier]", "--nth", "0")
+      if (evalJs("return !!document.querySelector('[data-identifier]')") !== "true") {
+        browser("wait", "time", "1")
+        continue
+      }
+      try { clickVisible(`[...document.querySelectorAll('[data-identifier]')].find(e=>e.offsetParent!==null)`, "Google 第一账户") }
+      catch (error) {
+        if (/No resolved element|找不到 Google 第一账户|selector_not_found/.test(error.message)) { browser("wait", "time", "1"); continue }
+        throw error
+      }
       browser("wait", "time", "1")
     } else if (page.buttons.some(b => /使用 Google 登录|Sign in with Google|Continue with Google/i.test(b.text))) {
       clickVisible(`[...document.querySelectorAll('button,a,[role=button]')]
@@ -173,8 +192,19 @@ function submitMissingSitemaps() {
   }
 }
 try {
+  if (argv.includes("--resume-import")) {
+    opened = true
+    recoverSession({preview:true})
+    selectOnly(sites)
+    click('button[data-tag="importButton"]')
+    waitFor(p => p.dialogs.some(d => /正在添加网站信息|Adding site|成功添加/i.test(d)) || p.dialogs.length === 0, "导入提交响应")
+    console.log(`已导入指定站点 ${sites.join(", ")}；需后台回读。`)
+  } else {
   open("https://www.bing.com/webmasters/")
   recoverSession()
+  if (evalJs(`return !!document.querySelector('button[aria-label="选择网站"],button[aria-label="Select site"]')?.offsetParent`) !== "true") {
+    click('button[aria-label="显示导航面板"],button[aria-label="Show navigation panel"]')
+  }
   if (evalJs(`return !!document.querySelector('button[aria-label="选择网站"],button[aria-label="Select site"]')`) !== "true") {
     throw new Error("Bing 左侧网站选择器未出现；停止")
   }
@@ -196,7 +226,8 @@ try {
     waitFor(p => p.dialogs.some(d => /正在添加网站信息|Adding site|成功添加/i.test(d)) || p.dialogs.length === 0, "导入提交响应")
     console.log(`已点击导入 ${missing.length} 站；需逐站读回 Bing sitemap 页面确认。`)
   }
+  }
 } finally {
-  if (opened) { try { browser("close") } catch { /* avoid masking original failure */ } }
+  if (opened && !argv.includes("--keep-session")) { try { browser("close") } catch { /* avoid masking original failure */ } }
 }
 if (submitSitemap) submitMissingSitemaps()

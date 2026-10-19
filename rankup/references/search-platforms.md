@@ -95,25 +95,34 @@ if (path === `/${INDEXNOW_KEY}.txt`) {
 2. **指向 Skill 目录 = 项目在自己仓库外有一个隐形依赖。** 换台机器、别人 clone、
    CI 容器里，那个路径都不存在，而报错会长得像「脚本坏了」而不是「少装了东西」。
 
-正确形态，三条都要满足：
+新站把通用脚本复制到**项目仓库** `scripts/indexnow-submit.mjs`（monorepo 可在应用子目录下），密钥从项目的单一事实源传入，不引用 Skill 目录；沿用项目已有的密钥文件与常量一致性断言，部署前检查不因本次窗口改造而取消。上线前先用 `--dry-run` 看推送清单。
 
-- **脚本放进项目仓库**（`scripts/indexnow-push.mjs`），不引用 Skill 目录；
-- **密钥从项目里的单一事实源读**（例如 `src/content/site.ts` 的常量），
-  并在脚本里**断言** `public/<key>.txt` 与该常量一致——这个不变条件此前是靠
-  源码注释拜托人类维护的，而不一致的后果（送信 403）要到下次推送才暴露；
-  把同一个断言也挂进 `test` 任务，漂移就在部署前落地；
-- **接到出荷命令的后段**，让「不推送」变成做不到的事：
+**每一条实际部署路径都接上推送**，不是只给本地 ship 添一段：本地 ship 在部署完成后调用仓库内脚本；若 git push 走 Cloudflare Workers Builds，触发器的「部署命令」是另一条独立路径，也在 `wrangler deploy` 后接同一脚本。下面的路径相对于实际构建根目录，站点与密钥参数从项目配置传入：
 
-```json
-{ "scripts": {
-  "ship": "turbo typecheck && turbo test && turbo build && pnpm --filter web deploy && pnpm --filter web indexnow"
-} }
+```bash
+pnpm exec wrangler deploy --config dist/server/wrangler.json && node scripts/indexnow-submit.mjs --site-url "$SITE_ORIGIN" --key "$INDEXNOW_KEY" --days 2
 ```
 
-**默认行为是 diff 推送**：脚本维护一份上次成功推送的 URL 集合
-（`.rankup/indexnow-last.json`，本地状态，不进 git），每次只推 sitemap 里新出现的 URL。
-全量推送用 `--all` 显式触发（首次推送或密钥轮换后）。
-这个记录文件丢了不影响正确性——下次自动退化为全推一次。
+用 `scripts/cf-builds-connect.mjs --deploy-command "<上面的部署命令>"` 配置 Workers Builds；不依赖本机安装目录。
+
+### 无状态 lastmod 窗口与页面日期
+
+**新站的部署命令默认显式传 `--days 2`**：递归展开 sitemap 索引与子 sitemap，对每个 `<url>` 读 `<loc>` 和 `<lastmod>`，只推 `lastmod >= 今天(UTC 零点) - N 天` 的页面。`--days N` 调整天数，`--since YYYY-MM-DD` 指定包含当天的起点；没有 lastmod 的 URL 视为变动，无法解析的日期也保守推送。没有近期变动时 exit 0，跳过提交。`--all` 全量覆盖窗口，用于首次推送或密钥轮换后。
+
+通用 CLI 为兼容现有调用，**仅显式传 `--days` / `--since` 时启用窗口**；无窗口参数仍按原有全量模式执行，位置参数或 `--file` 明确列出的 URL 照常推送。新站用部署命令带 `--days 2` 实现默认窗口，不改变旧调用。
+
+**lastmod 写在页面注册表里**：新增页面填创建当天（UTC），改了页面内容就更新为修改当天，内容没变保留旧日期；sitemap 从该清单输出 lastmod，不能每次构建把全站日期改成今天。遗漏日期更新的旧页不会进入窗口。窗口不读 `.rankup/indexnow-last.json`，不靠 gitignore 的本地状态做差分。
+
+【实测·2026-10-05，来源：已验证项目经验回流】两个坑：Workers Builds 等 CI 没有本地推送记录，按本地状态做 diff 会在每次部署全量重推；只看 package.json 曾把「CI 已在推送」误判成「没推送」。因此核对时读 **Cloudflare 实际触发器配置与最近一次构建日志**，不能只看仓库命令：
+
+- `GET /accounts/{id}/builds/workers/{script_tag}/triggers`：查看实际部署命令与构建根目录。
+- `GET /accounts/{id}/builds/builds/{build_uuid}/logs`：读最近一次目标部署的日志，与预期窗口清单对账；把提交条数与 HTTP 状态记进 `.rankup/integrations.md`。验收判据只在 [`checklists.md` 段 5 的 IndexNow 行](checklists.md#段-5--上线与接入)。
+
+### 新增或改动页面上线后的收尾
+
+IndexNow 随部署命令自动推送。GSC 另用 `scripts/webmaster-sitemap.mjs gsc submit` 重新提交索引 sitemap 和受影响语言的子 sitemap，各提交一次（参数用法见下文「6. 提交 sitemap」）。重复提交幂等；列表里已有不等于已抓取，隔天用 `scripts/webmaster-sitemap.mjs gsc status` 读「上次读取」日期是否前进。搜索平台的「已接受」都不等于「已收录」。
+
+提交接口失败要让 CI 的推送步骤标红并报告；部署此前已成功时，不误称 Worker 被回滚。没有近期变动的正常跳过与提交失败分开记录。
 
 推送时机是**部署完成之后**，不是构建之后：脚本要校验线上的密钥文件与 sitemap，
 而它们在部署完成前还是旧的。脚本应当把「部署前就跑」这种情况**指名报错**——
@@ -173,6 +182,8 @@ meta 标签的形状（token 是公开值，本来就印在每一页的 HTML 里
 ```
 
 ### GSC 与 Bing 脚本
+
+本机若设了 `HTTPS_PROXY`，须将 `api.cloudflare.com` 加入 `NO_PROXY`（走代理会丢 TLS 握手）；例：`NODE_USE_ENV_PROXY=1 NO_PROXY=api.cloudflare.com node scripts/gsc-domain-verify.mjs add-site --domain <域名>`。
 
 **2026-10-03 实测补充**：`sc-domain:` 网域资源提交 sitemap 必须用**完整 URL**（`https://<域名>/sitemap.xml`）；填相对路径 `sitemap.xml`
 点提交后列表仍为空、不报错（`webmaster-sitemap.mjs` 已对 sc-domain 自动补全）。站点仍 `Disallow: /` 时 GSC 里这条 sitemap 显示「无法抓取」，

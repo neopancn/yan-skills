@@ -82,7 +82,7 @@ wc -l /tmp/r/candidates.txt
 | **零配额但要真浏览器**（过反爬，不需登录） | 1b boards trustmrr/traffic-cv · 1c taaft · reviews-mine 的 trustpilot/g2/capterra · chrome-stats | 每个源一个**描述性会话名**，跑完 `opencli browser <session> close`。sub agent 退出前必须显式关 |
 | **官方 API 积分** | 1a `stripe-referring` 官方分支每业务调用 1（全榜保留旧入口）；`payment-referrers serp` 每查询 2；其他接口按官方实时目录 | 阶段 0 查价格与余额，保留实际扣费字段；不沿用旧网站共享池或缓存免费口径 |
 | **面板配额，一次一个采集器** | 5 similarweb-query / semrush-overview / semrush-report / similarweb-keywords | 会话名固定，**不许并行**。`similarweb-batch` 单域 6–10 秒，可续跑 |
-| **要钱的** | `domain-profile.mjs` 默认官方 gefei CLI（domain_overview 当前 2 积分/域名，以目录为准）；`--provider tabapi` 按 credit · `serp-query`（serper 付费额度） | 官方 API 扣余额，不用网站每日赠送额度 |
+| **要钱的** | `domain-profile.mjs` 默认官方 gefei CLI（domain_overview 当前 2 积分/域名，以目录为准）；`--provider tabapi` 按 credit · `serp-query`（serper 可选兜底，默认见 [SERP 取数路线](../../seo-serp.md#serp-取数路线)） | 官方 API 扣余额，不用网站每日赠送额度 |
 
 ### 收尾
 

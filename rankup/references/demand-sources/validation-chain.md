@@ -37,7 +37,7 @@
 |---|---|---|
 | 站点来历、注册日期、DR、核心词 | `node scripts/demand/domain-profile.mjs <域名>`；支持 `--file` 批量与 jsonl 续跑 | 错误行与 manifest 留证；未知不是零值 |
 | 词量等工具读数 | 官方 `gefei-keywords` Skill；接口口径见 [`seo-webcafe.md`](../seo-webcafe.md) | 非成功响应记未取得；KD 的处理只见 [`entry.md`](../playbooks/entry.md#选词判据只看两个) |
-| 结构化 SERP | `node scripts/demand/serp-query.mjs "<问法>"` | 报错/超时是盘面没看到，不是盘面空 |
+| SERP 盘面 | [SERP 取数路线](../seo-serp.md#serp-取数路线)；`serp-query.mjs` 仅为可选兜底 | 报错/超时是盘面没看到，不是盘面空 |
 | 总访问与渠道、自然词库、站群关联 | `backlink/scripts/similarweb-query.mjs`、`backlink/scripts/semrush-overview.mjs`、`node scripts/sitedata.mjs --domain <域名>`；能力见 [`provider-capabilities.md`](../provider-capabilities.md) | 登录失效/未渲染记未取得，保留面板原始证据 |
 | 趋势测量 | `python3 scripts/gt.py compare "<主词>" --geo <目标国家> --time 12m`；默认 gpts 与校准口径只见上表 trends 唯一源 | 429、空响应与缺测按唯一源留证 |
 

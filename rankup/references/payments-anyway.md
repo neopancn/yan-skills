@@ -10,6 +10,13 @@ Anyway 官方将 Business 定义为 Merchant of Record（MoR）：对其覆盖�
 
 [Merchant API 订单读取文档](https://docs.anyway.sh/fetch-order-361860806e0)列出 `GET /v1/orders/{orderId}`；同站 [Webhook 文档](https://docs.anyway.sh/webhooks-7536990m0)描述支付事件。下述后台 UI、JWT 和 webhook 签名形状来自 2026-09-07 的单次 stg 实测，接入时仍要对照当前后台和真实样本，不能把旧观察当所有环境的保证。该实测的支付链接跳往 Stripe 托管结账页。
 
+## 硬规则：支付链接域名与上线实测（2026-10-06 hotellobby 事故）
+
+- **支付页域名按环境不同**：stg 是 `https://stg.anyway.sh/pay/<linkId>`，**生产是 `https://app.anyway.sh/pay/<linkId>`**。`https://anyway.sh/pay/<linkId>`（以及 `www.anyway.sh` 跳过去的同一地址）在生产一律返回 404「Page not found」，哪怕商品和链接都存在。hotellobby 因为把生产链接写成 `anyway.sh/pay/…`，用户点"支付"全部落到 404；stg 预览用 `stg.anyway.sh` 是对的，所以预览测试漏掉了它。
+- **不要凭记忆或照 stg 改域名拼链接**：Merchant API 的 `paymentLinkUrl` 恒为空，也没有现成完整 URL 字段。用 `node scripts/anyway/anyway.mjs --env prod products links <productId>`，它按环境拼出 `payUrl` 并实际请求，`check` 列必须是 `OK 200`，出现 `FAIL` 就不许写进项目。商品和链接 ID 以该命令输出为准，不手抄。
+- **生产切换前必须逐条实测每个生产链接**：对项目里写死的每一条生产支付链接，带上 `?merchant_reference=<任意值>` 请求，要求 HTTP 200 且页面标题不是 `Page not found`。不是只看商品 PUBLISHED / 链接 isActive。
+- **项目侧验收必须从用户视角点一次**：线上页面点"支付"按钮，确认跳到的是 Stripe 托管结账页，而不是 Anyway 的 404。只测 stg 预览、只看 API 里链接存在、只看构建通过，都不算支付可用。
+
 ## 接入顺序
 
 1. 申请商户并完成审核，核对目标地区、币种与支付方式。
@@ -17,7 +24,7 @@ Anyway 官方将 Business 定义为 Merchant of Record（MoR）：对其覆盖�
 3. 建立 webhook 端点：先运行 `create-webhook.mjs` dry-run 查看表单，实际创建时再传 `--commit`。
 4. 在 Worker 接入 [`anyway-verify.ts`](../scripts/anyway/worker/anyway-verify.ts)：checkout-return 的 `sig` 按 EdDSA JWT 验签并检查 `iss/aud/sub/exp/status`；webhook 用原始 body 与 Ed25519 JWKS 验签；发货前通过 Merchant API 读取订单复核状态、商品、金额和币种。签名公钥按环境隔离缓存，失败时刷新一次。
 5. 用 stg 测试卡跑支付链接 → 回跳 → webhook → Merchant API 订单复核。将订单、回调和交付证据留在项目侧。
-6. 生产环境使用独立 API key、后台商品、支付链接和 webhook；完成真实目标流程后才切换用户入口。
+6. 生产环境使用独立 API key、后台商品、支付链接和 webhook；生产链接用 `--env prod products links <productId>` 取地址并确认 `check` 为 `OK 200`（域名是 `app.anyway.sh`，见上方硬规则）；完成真实目标流程后才切换用户入口。
 
 跳转式结账若页面有必须保留的本地数据（例如用户上传的照片），付款前暂存 IndexedDB；返回后根据已核实的订单恢复使用，并在完成后删除。该模式由项目决定具体存储期限和清理时机。
 
@@ -28,6 +35,7 @@ Anyway 官方将 Business 定义为 Merchant of Record（MoR）：对其覆盖�
 ```bash
 node scripts/anyway/anyway.mjs --env stg me
 node scripts/anyway/anyway.mjs --env stg products list
+node scripts/anyway/anyway.mjs --env prod products links <商品ID>  # 输出真实 payUrl 并实测 200/404，生产链接上线前必跑
 node scripts/anyway/scripts/create-product.mjs --env stg --name <商品名> --description <描述> --price <金额> --currency USD --success-url <返回地址>
 node scripts/anyway/scripts/archive-product.mjs --env stg --name-match <子串> --keep <保留商品ID,保留商品ID> --dry-run  # 预览归档候选；去掉 --dry-run 才实际归档并回读
 node scripts/anyway/scripts/create-webhook.mjs --env stg --url https://example.com/hook

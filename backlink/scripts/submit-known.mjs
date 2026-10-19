@@ -142,7 +142,8 @@ const session = validateSession(
     ? flags.session
     : `${recipe.sessionPrefix || `backlink-known-${domain.replace(/[^a-z0-9]+/gi, '-')}`}-${project}`.slice(0, 63),
 );
-const windowMode = flags.window === 'foreground' ? 'foreground' : 'background';
+// --window foreground 仅供需要人工登录、验证码或亲自查看时显式使用。
+const windowMode = flags.window || process.env.OPENCLI_WINDOW || 'dedicated';
 const waitSeconds = Math.max(0, Math.min(15, Number(flags.wait || 3)));
 
 let targetUrl = recipe.route;

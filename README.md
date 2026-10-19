@@ -59,6 +59,8 @@ npx skills add yan-labs/yan-skills -g --all
 | 「一句话，你自己拆解自己跑完」 | [`autopilot`](autopilot/) |
 | 「生成 logo / 吉祥物 / og 图 / 内页配图 / 用户场景图 / 手绘插画」 | [`imagegen`](imagegen/) |
 | 「让 Codex 在后台跑一轮」 | [`codex`](codex/) |
+| 「写文章 / 改稿 / 写文案 / 写脚本 / 去 AI 味 / 翻译 / 摘要 / 排版」 | [`write`](write/) |
+| 「effect.video 的 model 页 / blog / 模型对比 / 产品对比，把页面内容写出来」 | [`blog`](blog/) |
 | 「skill 没生效 / 目录重复 / 链接坏了」 | [`skill-link-check`](skill-link-check/) |
 
 三条容易走错的边界：
@@ -73,7 +75,7 @@ npx skills add yan-labs/yan-skills -g --all
 
 ## `rankup` — 独立开发者项目全生命周期管理
 
-版本 `3.38.5`。Rankup 管项目从需求验证到变现迭代的全生命周期，以及跨会话接力与项目记录维护；SEO / GEO 是主要手段，不是适用边界。它负责调研、建设、上线与增长决策；查关键词、竞品、域名、页面和哥飞经验时，按[哥飞工具箱指南](rankup/references/seo-webcafe.md)安装并加载官方 Skill 包，直接调用其工具。五个探索动作（词→词、词→问题、词→站、站→词、站→站）与市场证据闸门仍由 Rankup 执行。
+版本 `3.38.7`。Rankup 管项目从需求验证到变现迭代的全生命周期，以及跨会话接力与项目记录维护；SEO / GEO 是主要手段，不是适用边界。它负责调研、建设、上线与增长决策；查关键词、竞品、域名、页面和哥飞经验时，按[哥飞工具箱指南](rankup/references/seo-webcafe.md)安装并加载官方 Skill 包，直接调用其工具。五个探索动作（词→词、词→问题、词→站、站→词、站→站）与市场证据闸门仍由 Rankup 执行。
 
 登录态数据平台可以直接走薄 CLI，把一次探路沉淀成可续跑清单：
 
@@ -289,6 +291,8 @@ Cloudflare-first：SSR 与 API 走 Workers，事务数据走 D1，文件与导�
 
 ## `backlink` — 外链与登录态数据
 
+版本 `3.3.1`。
+
 `SKILL.md` 是 XML 结构的 v3.0。理由写在文件开头：这个 Skill 的主体是法则和路由，而一条容易被略过的法则，就是一条会被违反的法则。打了标签的块，让「我刚才违反了哪一条」这个问题有名字可答。
 
 **34 个脚本 + 19 篇方法论 + 4 个机读数据文件。**
@@ -367,7 +371,7 @@ candidate → qualified → filled → submitted → public → indexed@<engine>
 
 ## `opencli` — 浏览器与取数的底层
 
-版本 `1.0.0`。**用其它 Skill 之前先装它**——`rankup` 和 `backlink` 的浏览器动作全部落在这一层，规则集中在这里，那两个 Skill 只留判据和指针。
+版本 `1.8.2`。**用其它 Skill 之前先装它**——`rankup` 和 `backlink` 的浏览器动作全部落在这一层，规则集中在这里，那两个 Skill 只留判据和指针。
 
 配套的 OpenCLI 本体也是我们自己维护的构建（[yan-labs/OpenCLI](https://github.com/yan-labs/OpenCLI)，Apache-2.0），**不要用 Chrome 应用商店那个版本**，理由见[前置依赖](#装-opencli-cli--浏览器扩展)。
 
@@ -409,6 +413,14 @@ candidate → qualified → filled → submitted → public → indexed@<engine>
 KD 与 SERP、用 Semrush 核对搜索量、检查可玩供给，结果统一写入项目 `.rankup/`。真实入口是
 `node game-opportunity/scripts/game-opportunity.mjs daily`，最终生成带候选链接和
 `develop / research / watch` 决策的 `latest.md` 与 `latest.json`。
+
+### [`blog`](blog/) — effect.video 文章类页面流程（非通用）
+
+我们自己的文章做法：X 调研交 Grok、资料采集交 Claude、成文交 Gemini 3.8 Flash、review 交 Claude Sonnet；不自编、只拼有出处的资料；页面必备 YouTube iframe、X 评论墙、参数/对比表、Prompt 集合卡与引导 card；最后用哥飞评分、AITDK、ChatGPT 匿名问答评判。与 `rankup`、`agent-fleet`、`write`、`gefei`、`opencli`、`design` 联动。
+
+### [`write`](write/) — 中文写作唯一入口
+
+写文章、改稿、写文案与脚本、标题钩子、翻译摘要、公众号排版和去 AI 味都从这里进。主文件只做路由，按情形读 `references/` 里的细则（素材、塑形、按拍推进、长文笔法、文案、标题、翻译排版）；成稿一律过内置中文体检 `scripts/check.py`（硬禁项、节奏统计、字符清理）。依赖 Python 3。
 
 ### [`skill-link-check`](skill-link-check/) — Skill 目录审计
 

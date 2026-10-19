@@ -245,9 +245,18 @@ function cli(action_, { timeout = 30000 } = {}) {
   }
 }
 function evalJs(js) { return cli(`eval '${`(()=>{${js}})()`.replace(/'/g, "'\\''")}'`) }
-function open(url) { cli(`open "${url}"`) }
+function open(url) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { cli(`open "${url}"`); return } catch (error) {
+      if (!/Navigation rejected/.test(error.message)) throw error
+      settle(2000)
+      if (evalJs("return location.origin+location.pathname") === new URL(url).origin+new URL(url).pathname) return
+      if (attempt === 2) throw error
+    }
+  }
+}
 function pageText(max = 4000) {
-  return evalJs(`return (document.querySelector('main')||document.body).innerText.replace(/\\n{2,}/g,'\\n').slice(0,${max})`)
+  return evalJs(`return ((document.querySelector('main')||document.body)?.innerText||'').replace(/\\n{2,}/g,'\\n').slice(0,${max})`)
 }
 function currentUrl() { return evalJs(`return location.href`) }
 function settle(ms) {
@@ -393,7 +402,7 @@ async function doAddSite() {
     )
   }
   const txtValue = `yandex-verification: ${value}`
-  console.log(`DNS TXT 验证值（从页面 DOM 取，非截图/记忆）: ${txtValue}`)
+  console.log("DNS TXT 验证值已从页面 DOM 读取（值不输出）。")
   scene("verification-value-extracted", { value })
 
   // Cloudflare：幂等加 TXT。

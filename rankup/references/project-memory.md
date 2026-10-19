@@ -201,10 +201,13 @@ Claude Code 的 prompt cache 最长 1 小时（超额后降到 5 分钟），会
 | `research/` | 一次调研一份报告（`<词根>-<YYYY-MM-DD>.md`、`feature-<名>-<日期>.md`），原文不改 | 未定论的想法（→ `journal/`） | 单篇不限，超 600 行拆附录 |
 | `journal/` | `YYYY-MM-DD.md`，当天的观察、判断与依据；同日归档命名见维护「四」第 7 条 | 命令输出、一次性 brief（压成结论） | 单篇 200 行 / 16 KB |
 | `scripts/` | 项目专属脚本（`<动词-对象>.mjs`），登记在 `INDEX.md` | 数据产出 | — |
+| `reports/` | 需长期保留的分析报告与执行结果（成本审计、基础设施评估、迁移方案等），从临时目录迁入 | 过程文件（brief、body、raw data）、已过期且不再被引用的报告 | 单篇不限，总量超 10 篇时压缩最早的 |
 | `evidence/`、`agentic/` | 脚本原始证据，按脚本与时间戳分目录 | 进 git 的原始检测 JSON（仓库只放人读结论） | 超过 30 天且无人引用的清掉 |
 | 脚本产物：`demand/`、`selection/`、`leading-indicator/`、`provider-audit/`、`state/`、`data/`、`indexnow-last.json`、`backlink-targets.json` | 由 rankup / backlink 脚本写入的运行结果与断点状态 | 手写内容（→ 对应专题文件） | 旧运行按 `evidence/` 同一规则清；断点状态文件不删 |
 
 **命名**：小写加连字符；日期一律 `YYYY-MM-DD`，放文件名末尾。**顶层允许上表与目录结构里的文件，以及 `INDEX.md` 文件状态表明确登记职责的项目专属文件或目录**（如设计、上线、文案与非敏感配置；未登记的只列 C 类）；带日期的一次性文件（`launch-queue-<日期>.md` 这类）归入 `research/` 或 `journal/`；`*.bak`、`*backup*` 等副本统一按维护「三」的 C 类口径处理；同一职责出现两个文件（例如 `log.md` 与 `journal/`）时合并到规范里的那个。
+
+**`~/.agent-reports` 是临时目录（CRITICAL）**：`~/.agent-reports/` 随时可能被清空，不是持久存储。任务产出的分析报告、执行结果等需要跨会话复用的文档，必须在任务收尾时迁移到项目 `.rankup/reports/`（或 `research/`），并更新引用指针；brief、body、raw data 等过程文件可以留在原处自然清理。`cost-optimization-plan.md` 等汇总文件里引用 `~/.agent-reports` 路径的，一律改为 `.rankup/` 内的相对路径。
 
 **工作区根层**：`.rankup/` 可保留 `README.md`（工作区说明）、`portfolio.md`（项目总表）、`projects.json`（登记数据）与 `log.md`（根层历史记录，按 journal 规则压缩）。存在 `portfolio.md` / `projects.json`，或诊断参数指明项目根等于工作区根时按根层识别；普通项目根本身的文件不属于 `.rankup/` 扫描范围。`archive/` 是历史原文，`backlink/` 是脚本产物，均不按常驻文件体积检查。`tasks/briefs/` 收口后只留结论与报告指针。
 

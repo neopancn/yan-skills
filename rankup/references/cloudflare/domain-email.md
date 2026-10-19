@@ -241,8 +241,16 @@ routing 显示「已禁用」但 DNS 记录和规则都在。此时 API `POST ..
 **冲突风险**：`enable` 会写入 Cloudflare 自己的 MX 记录。如果域名已有 MX
 （Google Workspace / Zoho 等），启用前先确认不会抢走现有邮箱的收件。
 
-**只管收件**：Email Routing 只做转发，不提供发件能力。
-需要用域名邮箱发信时另接实际发信服务，并验证该服务的 SPF / DKIM 与 DMARC 对齐；不能因已接 Routing 就认定能外发。
+**只管收件**：Email Routing 只做转发，不提供发件能力。发信用下面的 Cloudflare Email Sending；验证码、改密、完成通知、回复来信都走它，**不再接 Resend 等第三方发信服务**（2026-10-08 起）。
+
+### 发信：Cloudflare Email Sending（2026-10-08 实测）
+- 状态 beta；需要 Workers Paid（账户已是），含每月 3000 封（全账户所有站共用），超出 $0.35/千封；发给已验证的目的地址免费。域名须用 Cloudflare DNS。
+- **开通（一条 API，不用进面板）**：`POST /zones/<zone>/email/sending/subdomains`，body `{"name":"<域名或子域名>"}`。会自动加 `cf-bounce.<name>` 的 MX、SPF、DKIM，以及缺失时的 `_dmarc`（`p=reject`），不改原有记录。站点验证码沿用 `login@mail.<域名>` 就开通 `mail.<域名>`；人工回信用 `hello@<域名>` 就开通根域。先拍 DNS 快照再开通，回读新增记录。
+- **新开通域名要等约 1 分钟**才能发，之前会返回 `sending_disabled`（code 10203），不是权限问题，等一下重试。
+- **站点代码**：wrangler 加 `"send_email": [{ "name": "EMAIL" }]`，代码 `env.EMAIL.send({ from: {email,name}, to, subject, text, html, replyTo })`，不需要任何 secret；无幂等键，重复发送靠自己的发码/通知表去重。模板见 saas-template。
+- **脚本/人工发信（REST）**：`POST /accounts/<account>/email/sending/send`，字段 `to, from(字符串或{address,name}), reply_to, subject, text, html`；返回 `delivered/queued/permanent_bounces`，`queued` 不等于已送达，要回读。
+- **回信流程（读者/来信回复）**：①Gmail 读来信并核实事实；②做完网站改动并上线、回读页面；③用官方 `hello@<域名>` 从 REST 发感谢信（`reply_to` 设为 hello@，回信会经 Email Routing 回到收件箱）；④公开署名、转载等要先问对方同意，未获同意一律匿名。不要用个人 Gmail 回，容易被对方过滤，也不是官方身份。
+- 上线验收：真实触发一次验证码并在收件箱回读；有 Turnstile 的入口需真人在浏览器里登录一次；确认可用后再删旧的 `RESEND_API_KEY` secret，并在项目 `.rankup/integrations.md` 记录发信域名与验收时间。
 
 ### 邮件防冒充：与收信一起验收
 

@@ -21,7 +21,12 @@
  *   --site-url <url>      站点规范源，含协议，不带尾斜杠。必填（除非 --generate-key）
  *   --key <hex>           IndexNow 密钥。必填。也可用环境变量 INDEXNOW_KEY
  *   --key-location <url>  密钥文件地址（默认 <site-url>/<key>.txt）
- *   --sitemap <url>       URL 列表来源（默认 <site-url>/sitemap.xml）
+ *   --sitemap <url或路径>  URL 列表来源（默认 <site-url>/sitemap.xml）；支持本地 XML
+ *   --days <N>            显式启用 lastmod 窗口：今天 UTC 零点减 N 天（部署推荐 2）
+ *   --since <YYYY-MM-DD>  显式指定窗口起点（含当天）；与 --days 互斥
+ *   --all                 全量，覆盖窗口；首次推送或密钥轮换后用
+ *                        窗口/--all 递归展开 sitemap 索引；无 lastmod 视为变动
+ *                        无窗口参数时保持原有全量行为，不读本地推送状态
  *   --file <路径>          从文件读 URL/路径，每行一个（# 开头与空行忽略）
  *   --endpoint <url>      提交端点（默认 https://api.indexnow.org/indexnow）
  *   --max <n>             最多提交多少条（默认 10000，协议上限）
@@ -50,6 +55,7 @@
  */
 import { readFileSync, existsSync } from "node:fs"
 import { randomBytes } from "node:crypto"
+import { resolve, dirname } from "node:path"
 
 // ── 参数解析 ──────────────────────────────────────────────
 const argv = process.argv.slice(2)
@@ -62,6 +68,9 @@ let endpoint = "https://api.indexnow.org/indexnow"
 let max = 10000
 let skipKeyCheck = false
 let dryRun = false
+let days = null
+let since = null
+let all = false
 const inputs = []
 
 for (let i = 0; i < argv.length; i++) {
@@ -74,7 +83,11 @@ for (let i = 0; i < argv.length; i++) {
   if (a === "--endpoint" && argv[i + 1]) { endpoint = argv[++i]; continue }
   if (a === "--max" && argv[i + 1]) { max = Number(argv[++i]); continue }
   if (a === "--skip-key-check") { skipKeyCheck = true; continue }
+  if (a === "--days" && argv[i + 1]) { days = Number(argv[++i]); continue }
+  if (a === "--since" && argv[i + 1]) { since = argv[++i]; continue }
+  if (a === "--all") { all = true; continue }
   if (a === "--dry-run") { dryRun = true; continue }
+  if (a === "--send") { continue }
   if (a === "--generate-key") { generateKey(); process.exit(0) }
   if (a === "-h" || a === "--help") { usage(); process.exit(0) }
   if (a.startsWith("-")) { console.error(`未知参数: ${a}`); usage(); process.exit(1) }
@@ -87,7 +100,9 @@ function usage() {
   node indexnow-submit.mjs --generate-key
   node indexnow-submit.mjs --help
 
-不带路径参数时，URL 列表从 --sitemap（默认 <site-url>/sitemap.xml）读取。`)
+不带路径参数时，URL 列表从 --sitemap（默认 <site-url>/sitemap.xml，可用本地 XML）读取。
+--days N / --since YYYY-MM-DD 显式启用 lastmod 窗口；--all 全量覆盖窗口。
+部署推荐 --days 2；没有窗口参数时保持原有行为。`)
 }
 
 /**
@@ -113,6 +128,21 @@ if (!/^[A-Za-z0-9-]{8,128}$/.test(key)) {
   process.exit(1)
 }
 
+// 窗口是 UTC 日历日，不受 CI 时区影响；不带新参数时仍走原来的全量模式。
+if (days !== null && (!Number.isInteger(days) || days < 0)) {
+  console.error("错误：--days 必须是非负整数"); process.exit(1)
+}
+if (since !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(since) ||
+    !Number.isFinite(Date.parse(since)) || new Date(since).toISOString().slice(0, 10) !== since)) {
+  console.error("错误：--since 必须是有效的 YYYY-MM-DD"); process.exit(1)
+}
+if (days !== null && since !== null) {
+  console.error("错误：--days 与 --since 不能同时使用"); process.exit(1)
+}
+const windowMode = !all && (days !== null || since !== null)
+const today = new Date().toISOString().slice(0, 10)
+const cutoff = since !== null ? Date.parse(since) : Date.parse(today) - (days ?? 2) * 86400000
+
 let host
 try { host = new URL(siteUrl).hostname } catch { console.error(`错误：--site-url 不是合法 URL: ${siteUrl}`); process.exit(1) }
 keyLocation ??= `${siteUrl}/${key}.txt`
@@ -131,24 +161,54 @@ if (listFile) {
   }
 }
 
+const decodeXml = (s) => s.trim().replace(/&(?:amp|lt|gt|quot|apos);/g,
+  (entity) => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'" })[entity])
+const visited = new Set()
+async function readSitemap(source) {
+  const remote = /^https?:\/\//i.test(source)
+  const identity = remote ? source : resolve(source)
+  if (visited.has(identity)) return []
+  visited.add(identity)
+  let xml
+  if (remote) {
+    const res = await fetch(source, { headers: { accept: "application/xml" } })
+    if (!res.ok) throw new Error(`sitemap 返回 ${res.status}: ${source}`)
+    xml = await res.text()
+  } else {
+    xml = readFileSync(identity, "utf8")
+  }
+  if (/<sitemapindex\b/i.test(xml)) {
+    const children = [...xml.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/g)].map((m) => decodeXml(m[1]))
+    if (!windowMode && !all) {
+      throw new Error(`${source} 是 sitemap 索引，不是 URL 集。逐个子 sitemap 跑本脚本，或用 --file 给出合并后的列表：\n${children.map((u) => `  --sitemap ${u}`).join("\n")}`)
+    }
+    const rows = []
+    for (const child of children) {
+      rows.push(...await readSitemap(remote ? new URL(child, source).href :
+        /^https?:\/\//i.test(child) ? child : resolve(dirname(identity), child)))
+    }
+    return rows
+  }
+  return [...xml.matchAll(/<url\b[^>]*>([\s\S]*?)<\/url>/gi)].flatMap((m) => {
+    const loc = m[1].match(/<loc>([^<]+)<\/loc>/i)?.[1]
+    const lastmod = m[1].match(/<lastmod>([^<]*)<\/lastmod>/i)?.[1]
+    return loc ? [{ loc: decodeXml(loc), lastmod: lastmod?.trim() || null }] : []
+  })
+}
+
 if (urlList.length === 0) {
-  const res = await fetch(sitemapUrl, { headers: { accept: "application/xml" } })
-  if (!res.ok) {
-    console.error(`sitemap 返回 ${res.status}: ${sitemapUrl}`)
-    console.error(`没有 URL 可推。要么修 sitemap，要么用位置参数/--file 显式给出列表。`)
+  let rows
+  try { rows = await readSitemap(sitemapUrl) } catch (e) {
+    console.error(e.message)
+    console.error("没有 URL 可推。要么修 sitemap，要么用位置参数/--file 显式给出列表。")
     process.exit(1)
   }
-  const xml = await res.text()
-  urlList = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].trim())
-  // sitemap 索引（<sitemapindex>）里的 <loc> 指向的是子 sitemap 而不是页面。
-  // 不静默地把它们当页面推上去——那会推一批 XML 文件的地址。
-  if (/<sitemapindex/i.test(xml)) {
-    console.error(`${sitemapUrl} 是 sitemap 索引，不是 URL 集。`)
-    console.error(`逐个子 sitemap 跑本脚本，或用 --file 给出合并后的列表：`)
-    urlList.forEach((u) => console.error(`  --sitemap ${u}`))
-    process.exit(1)
-  }
-  console.log(`从 sitemap 取到 ${urlList.length} 条：${sitemapUrl}`)
+  // 缺失或不可解析的 lastmod 保守视为变动，避免静默遗漏。
+  const selected = windowMode ? rows.filter(({ lastmod }) =>
+    !lastmod || !Number.isFinite(Date.parse(lastmod)) || Date.parse(lastmod) >= cutoff) : rows
+  urlList = selected.map((row) => row.loc)
+  console.log(`从 sitemap 取到 ${rows.length} 条：${sitemapUrl}`)
+  if (windowMode) console.log(`lastmod >= ${new Date(cutoff).toISOString().slice(0, 10)}：选中 ${urlList.length} 条（含无 lastmod）`)
 }
 
 // 去重并保序。sitemap 里出现重复 <loc> 不是罕见事（多语言站尤其），
@@ -168,7 +228,10 @@ if (urlList.length > max) {
   urlList = urlList.slice(0, max)
 }
 
-if (urlList.length === 0) { console.error("没有 URL 可提交。"); process.exit(1) }
+if (urlList.length === 0) {
+  if (windowMode) { console.log("没有近期变动 URL，跳过提交。"); process.exit(0) }
+  console.error("没有 URL 可提交。"); process.exit(1)
+}
 
 if (dryRun) {
   console.log(`dry-run —— host=${host}, keyLocation=${keyLocation}`)
@@ -215,4 +278,5 @@ if (res.status !== 200 && res.status !== 202) {
   process.exit(1)
 }
 console.log(`✓ IndexNow 已接受 ${urlList.length} 条（HTTP ${res.status}）`)
+console.log(`accepted ${urlList.length} url(s) (HTTP ${res.status})`)
 console.log(`  接受 ≠ 收录。收录情况去 Bing Webmaster 看，通常滞后数小时到数天。`)

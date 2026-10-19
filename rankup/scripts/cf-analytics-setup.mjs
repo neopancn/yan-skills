@@ -331,8 +331,11 @@ async function doStatusOrEnable(cmd, domain) {
   })
   console.log(`✅ 已启用 Web Analytics（auto_install: false，需手动嵌延迟加载的 snippet）\n`)
   reportSite(site)
-  console.log(`\n关闭边缘注入（auto_install=false 并不阻止注入，见 doDisableEdge 注释）…`)
-  await doDisableEdge(domain)
+  if (process.argv.includes("--preserve-edge")) console.log("按授权范围保留 zone 边缘注入设置，不调用 disable-edge。")
+  else {
+    console.log(`\n关闭边缘注入（auto_install=false 并不阻止注入，见 doDisableEdge 注释）…`)
+    await doDisableEdge(domain)
+  }
 }
 
 /** verify：只读三件套核验，不改任何 CF 配置。 */
@@ -411,7 +414,7 @@ function usage() {
   console.log(`用法: cf-analytics-setup.mjs <status|enable|verify|export-id|disable-edge> <domain> [--json-file <路径>]
 
   status <domain>   查询是否已启用，打印配置状态（token/snippet 脱敏）
-  enable <domain>   启用（auto_install 默认 false，需手动嵌延迟加载的 snippet）
+  enable <domain> [--preserve-edge]   启用（auto_install 默认 false；preserve-edge 不修改 zone 边缘开关）
   verify <domain>   只读核验：抓线上 HTML 比对 data-cf-beacon token、判断是否与
                     实际 beacon 路径重复、查 GraphQL 近 7 天 pageload 数
   disable-edge <domain>  关边缘自动注入（auto_install=false+ruleset.enabled=false），回读 HTML 确认；enable 会自动调用

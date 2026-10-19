@@ -66,7 +66,8 @@ const session = args.newTab
   ? `${args.session}-${new URL(args.url).hostname.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 40)}`
   : args.session;
 
-const windowMode = args.window || 'background';
+// --window foreground 仅供人工完成验证码或登录时显式使用。
+const windowMode = args.window || process.env.OPENCLI_WINDOW || 'dedicated';
 // 浏览器调用走 opencli-core 的 opencli()：带访问记账（限流只在取数结果里现形，
 // 记账点必须在拿得到 body 的这一层），也共享同一套 stderr 降噪。
 async function ocli(...argv) {

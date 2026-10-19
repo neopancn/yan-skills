@@ -187,7 +187,7 @@ Hugging Face 的新 task tag 领先 Google 搜索 2–6 个月——这是游戏
 | Reddit 许愿句式 | 标题（可直接当选题）、正文、子版、作者、时间 | RSS（零配置但限流狠）/ OAuth（CI 推荐）/ pullpush（兜底） | 否（CI 建议配 OAuth app） | `scripts/demand/reddit-wishes.mjs` |
 | Hacker News 评论 | Ask HN 下的整棵评论树 | 公开 JSON API | 否 | `scripts/demand/hn-signals.mjs --comments` |
 | **TAAFT 许愿区 `/requests/`** | **用户直接写下来的「我想要一个能做 X 的 AI」+ 票数 + 回答数**，实测 1,526 条 | OpenCLI 真实 Chrome | 否，但要真实浏览器 | `scripts/demand/boards.mjs taaft --board requests`（`--board requests-top` 按票数排） |
-| Google SERP（许愿句式限站搜） | organic 前十 + relatedSearches + peopleAlsoAsk | serper.dev API | 需 `SERPER_API_KEY` | `scripts/demand/serp-query.mjs` |
+| Google SERP（许愿句式限站搜） | organic 前十 + relatedSearches + peopleAlsoAsk | 浏览器默认，serper.dev API 可选兜底 | 默认不需 key | [SERP 取数路线](../seo-serp.md#serp-取数路线) |
 | **StackOverflow** | 高票未接受答案的问题、报错信息与 tag 热度变化 → 待核实任务与候选词 | 公开页面 + API | 否 | 暂无脚本——AI 直接搜索判断 |
 | **问答站**（Quora 及各垂直问答社区） | 一个具体到能被回答的问题：用户卡在哪一步、已经试过哪些办法；**问题标题本身常常就是长尾词的原句** | 公开页面 | 否 | 暂无脚本——AI 直接搜索判断 |
 | **半封闭社群**（Discord 服务器、社交平台的兴趣/行业群组、职业社交平台的动态） | 搜索引擎索引不到的日常吐槽与临时解法——同一个痛点在这里出现，通常早于它出现在公开论坛 | 公开或需入群的页面 | 视社群而定 | 暂无脚本——人工探测 |

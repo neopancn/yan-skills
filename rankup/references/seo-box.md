@@ -276,13 +276,12 @@ GEO 报告里这两项的原文措辞，看它是否真的只匹配英文疑问�
 ```bash
 # 默认路径：驱动本机 Chrome 采数，报告出分后直接抠完整 Lighthouse LHR JSON 落盘，
 # 不需要人工打开网页、不再靠人肉点开「展开视图」——见下方「LHR 直抠」一节
-# （2026-09-12 起 opencli 自动把标签页拉到真实前台可见，可无人值守稳定出分）
+# （默认 dedicated 专用窗口，扩展将会话标签设为该窗口活动标签；本机已实测出分）
 node <rankup-skill-dir>/scripts/pagespeed.mjs collect <url> <url2> <url3> --strategy both
 
 # 兜底：只出链接与读数清单，不采数（零依赖，随时能跑；把 <url> 换成自己要测的站）。
-# 拿到链接后必须在真实前台可见的浏览器标签页里打开，隐藏面板/无显示环境打开会卡在
-# 「Running analysis」永远不出分——仅在这台机器没有 opencli、非 macOS、或 Chrome
-# 前台被更强抢占导致 collect 持续报 tab-hidden 时才用
+# 拿到链接后必须在可见的浏览器标签页里打开，隐藏面板/无显示环境打开会卡在
+# 「Running analysis」永远不出分——仅在这台机器没有 opencli、或 collect 持续报 tab-hidden 时才用
 node <rankup-skill-dir>/scripts/pagespeed.mjs plan <同样几个 url> --strategy both
 ```
 
@@ -296,14 +295,15 @@ node <rankup-skill-dir>/scripts/pagespeed.mjs plan <同样几个 url> --strategy
    **伪造可见性无效**：改写 `document.visibilityState`/`hidden`、把 rAF 垫成
    `setTimeout`、补发 `visibilitychange` 都试过，页面读到的确实变 visible，
    渲染纹丝不动——节流在浏览器层，不在页面读的那个标志位。
-   单靠 `opencli --window foreground` 也不够（Chrome 整个 app 不在最前时标签页
-   仍是 hidden）——**但组合另一件事就够了：`collect` 期间额外起一个后台循环，
-   每 15 秒 `osascript activate` 一次把 Chrome 这个 App 也拉回前台**。
-   **所以 `collect` 默认就是前台驱动（open 带 `--window foreground` + activate
-   循环），2026-09-12 实测无人值守跑通（3 个 URL × 移动/桌面共 6 组一次性全部
-   出分，零重试，约 2 分钟）；人跑只是兜底，仍卡 tab-hidden 才需要。**
+   **2026-10-04 修订：`collect` 默认使用 `--window dedicated` 专用窗口**，
+   扩展把会话标签设为该窗口活动标签，满足可见性要求，无需抢用户前台窗口。
+   依据是当日任务 brief 提供的本机实测：另一进程在 dedicated 窗口跑 PSI 已出结果；
+   本轮未重跑线上 PSI，跨环境及最小化、遮挡时的表现未验证。
+   `--no-foreground` 为兼容别名，等同默认；仅显式 `--foreground` 才使用 foreground
+   与 hidden 时的 activate 兜底，会抢用户前台窗口，仅在用户明确要求看着时用。
+   历史 foreground + activate 实测可出分，不代表 PSI 必须抢系统前台。
 2. **跑不出来 ≠ 没有数据。** `collect` 把两种卡住分开报：`tab-hidden`（标签页
-   没在前台）与 `budget-exhausted`（可见但没跑完——实测有站跑满 240 秒仍在跑）。
+   不可见）与 `budget-exhausted`（可见但没跑完——实测有站跑满 240 秒仍在跑）。
    两种都**不许**被写成「性能没问题」或「这个站没有数据」。
 3. **现场数据缺失是正常形态，不是错误。** 页面上「了解您的真实用户的体验」
    那一整块直接不出现——新站流量不够进 CrUX 就长这样。

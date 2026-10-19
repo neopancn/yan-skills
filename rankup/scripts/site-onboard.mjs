@@ -90,6 +90,14 @@ async function buildTrigger() {
   return { account, trigger: matches[0].trigger_uuid }
 }
 async function buildEnv() {
+  if (check && repo) {
+    const siteConfig = join(repo, "sites", domain.replaceAll(".", "-"), "wrangler.jsonc")
+    if (existsSync(siteConfig)) {
+      const source = readFileSync(siteConfig, "utf8")
+      return Object.fromEntries(["GA4_MEASUREMENT_ID", "CLARITY_PROJECT_ID"].map(name =>
+        [name, { value: source.match(new RegExp(`"${name}"\\s*:\\s*"([^"]+)"`))?.[1] }]))
+    }
+  }
   if (!repo) {
     const page = await homepage()
     return {

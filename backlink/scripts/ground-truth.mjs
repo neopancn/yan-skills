@@ -558,8 +558,8 @@ async function main() {
 
   // 配额站收敛：同一站点固定会话名（如 semrush-nav），daemon 把并发排成一队。
   const session = sessionForUrl(url, 'ground-truth');
-  // hidden 出生的标签页永不水合（hidden-tabs-do-not-hydrate），所以 foreground 出生。
-  const windowMode = 'foreground';
+  // hidden 出生的标签页永不水合（hidden-tabs-do-not-hydrate），所以在可见的 dedicated 专用窗口出生。
+  const windowMode = 'dedicated';
 
   // 整轮持机器级工具锁（one-collector-per-quota-tool）：daemon 只串行化单条
   // batch，本脚本一轮横跨几十条命令，poll 间隙别的工作流可以 open 自己的 URL
@@ -641,7 +641,7 @@ async function main() {
   }
 
   try {
-    // 1. open（foreground 出生）+ 3 秒落地缓冲。
+    // 1. open（dedicated 出生）+ 3 秒落地缓冲。
     await batchBrowser(session, [{ cmd: 'open', args: { url } }, sleepStep(3)], { windowMode, timeoutMs: 120_000 });
 
     // 1b. 打开即刷新一次（eager reload，见上）——不占 stall 刷新次数配额，
@@ -802,7 +802,7 @@ async function main() {
       console.error(redactSecrets(`manifest write failed: ${writeError?.message || writeError}`));
     }
     // 结束时 close 会话（配额站的固定名标签页不留）。绝不 cleanup。
-    await closeSession(session).catch(() => {});
+    if (!flags['keep-open']) await closeSession(session).catch(() => {});
     // 锁最后放：close 也是对配额站的操作，应当在锁内完成。
     if (locks) await locks.release().catch(() => {});
   }

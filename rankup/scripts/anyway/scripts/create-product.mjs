@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 用途：在已登录后台创建一次性或月/年订阅商品与支付链接，再用只读 Merchant API 复核。
-// 参数：--name --description --price --currency --success-url [--type one-time|subscription] [--interval month|year] [--dry-run] [--no-submit] [--env stg|prod] [--env-file <path>] [--session anyway-dashboard] [--json]。
+// 参数：--name --description --price --currency --success-url [--type one-time|subscription] [--interval month|year] [--flexible --min 5 --max 48] [--dry-run] [--no-submit] [--env stg|prod] [--env-file <path>] [--session anyway-dashboard] [--json]。
 // --no-submit：只填表并回读字段值，不点「创建产品」（验证后台改版后的选择器，不会创建任何东西）。
 // 登录态：OpenCLI 已连接用户浏览器，且当前环境的商户后台已登录；复核需要相应 API key。
 // 已知坑：商品表单没有 cancel URL；提交即发布并创建支付链接；已归档同名商品不阻止重建。验证日期：2026-09-29。
@@ -48,6 +48,7 @@ const TYPE = flags.type || 'one-time';
 const INTERVAL = flags.interval || 'month';
 const DRY_RUN = !!flags['dry-run'];
 const NO_SUBMIT = !!flags['no-submit'];
+const FLEXIBLE = !!flags.flexible;
 
 const SESSION = flags.session || 'anyway-dashboard';
 const WINDOW = flags.window || 'dedicated';
@@ -164,7 +165,7 @@ async function main() {
   if (!['month', 'year'].includes(INTERVAL) || (TYPE !== 'subscription' && flags.interval)) throw new Error('--interval month|year requires --type subscription');
 
   if (DRY_RUN) {
-    console.log(JSON.stringify({ env: ENV, name: NAME, description: DESCRIPTION, price: PRICE, currency: CURRENCY, type: TYPE, ...(TYPE === 'subscription' ? { interval: INTERVAL } : {}), successUrl: SUCCESS_URL, create: false }, null, 2));
+    console.log(JSON.stringify({ env: ENV, name: NAME, description: DESCRIPTION, price: PRICE, currency: CURRENCY, type: TYPE, ...(TYPE === 'subscription' ? { interval: INTERVAL } : {}), successUrl: SUCCESS_URL, ...(FLEXIBLE ? { flexible: true, min: flags.min, max: flags.max } : {}), create: false }, null, 2));
     return;
   }
 
@@ -212,14 +213,20 @@ async function main() {
     }
 
     // Price is a plain number input with no id — target by placeholder.
-    runOpencliBrowser(['type', 'input[placeholder="输入价格"]', PRICE]);
+    if (FLEXIBLE) {
+      runOpencliBrowser(['click', 'input[type=checkbox]']);
+      if (flags.min !== undefined) runOpencliBrowser(['type', '#min-amount', String(flags.min)]);
+      if (flags.max !== undefined) runOpencliBrowser(['type', '#max-amount', String(flags.max)]);
+    } else {
+      runOpencliBrowser(['type', 'input[placeholder="输入价格"]', PRICE]);
+    }
 
     if (SUCCESS_URL) {
       runOpencliBrowser(['fill', '#payment-link-success-url', SUCCESS_URL]);
     }
 
     if (NO_SUBMIT) {
-      const readBack = runOpencliBrowser(['eval', `JSON.stringify({name:document.querySelector('#product-name')?.value,desc:(document.querySelector('#product-description')||document.querySelector('textarea'))?.value,price:document.querySelector('input[placeholder="输入价格"]')?.value,successUrl:document.querySelector('#payment-link-success-url')?.value})`]);
+      const readBack = runOpencliBrowser(['eval', `JSON.stringify({name:document.querySelector('#product-name')?.value,desc:(document.querySelector('#product-description')||document.querySelector('textarea'))?.value,price:document.querySelector('input[placeholder="输入价格"]')?.value,successUrl:document.querySelector('#payment-link-success-url')?.value${FLEXIBLE ? ",flexible:document.querySelector('input[type=checkbox]')?.checked,min:document.querySelector('#min-amount')?.value,max:document.querySelector('#max-amount')?.value" : ''}})`]);
       log('[no-submit] form filled, NOT submitted. Field read-back:', JSON.stringify(readBack));
       return;
     }

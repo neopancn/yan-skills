@@ -16,6 +16,8 @@
 
 ## 段 5：上线与接入
 
+正式域名占位复查同时按[建设中红线](../discipline.md#二十一禁止建设中内容与功能区域)重跑文案扫描与入口闭环，保留本轮证据。
+
 **顺序是固定的，分两批**：
 批 A（域名无关）在预览域接好并验证 → 域名黑历史裁决 → 域名定稿与绑定 → 部署到正式域名并真实验证 →
 放开索引（部署验证通过即放开，不等批 B，理由见 5.4 第 22 条）→ 批 B（域名相关）一个不漏 → 提交 sitemap（默认不逐 URL 请求编入索引，见 5.6）。
@@ -170,7 +172,7 @@ API 能立刻生效。AI 爬虫的 Bot Management 四字段已有 zone API，按
     由**你**通过 DNS API 写入记录，再让用户点验证——同样自动化，但不产生任何长期授权。
 25. **索引推送与 sitemap 提交这一整段，走 [`search-platforms.md`](../search-platforms.md)，不要现摸。**
     那份文档给的是顺序表 + 两个脚本 + 每个坑的判据：
-    - `scripts/indexnow-submit.mjs` —— 生成密钥、按 sitemap 全量推、按路径增量推。
+    - IndexNow 操作统一见 [`search-platforms.md` 的 IndexNow 章节](../search-platforms.md#12-indexnow)。
       **它排在站长工具前面**：IndexNow 一样账号都不欠，一个密钥文件就是全部凭据，
       排到后面等于白等账号问题解决的那几天。
     - `scripts/webmaster-sitemap.mjs` —— 在 GSC 与 Bing 里读/提交 sitemap（`status` / `submit`）。
@@ -210,7 +212,7 @@ API 能立刻生效。AI 爬虫的 Bot Management 四字段已有 zone API，按
 
 | 类别 | 平台 | 依赖 | 它独有的东西 |
 |---|---|---|---|
-| 索引推送 | IndexNow | 只要一个密钥文件 | 内容一变就主动推给支持的引擎，不等爬。`indexnow-submit.mjs`；密钥文件必须由应用层路由提供，**放静态目录会被静态资源绑定永久遮蔽**，之后轮换密钥要重新构建 |
+| 索引推送 | IndexNow | 只要一个密钥文件 | 接入、密钥路由与各部署路径（含 Workers Builds 部署命令）按 [IndexNow 操作](../search-platforms.md#12-indexnow) |
 | 搜索平台 | Google Search Console | Google 账号 + DNS 验证 | 查询词、曝光、平均排名、索引状态、人工处置、Generative AI 效果报告（AI Overviews/AI Mode 曝光）。sitemap 用 `webmaster-sitemap.mjs gsc submit` |
 | 搜索平台 | Bing Webmaster | 微软账号 | Bing/Yahoo/DuckDuckGo 一侧的收录。**有站 80% 流量来自这里。** **用 HTML meta 验证，不要用「从 GSC 导入」**（那是给 Bing 一个对 Google 账号的长期 OAuth）。sitemap 用 `webmaster-sitemap.mjs bing submit` |
 | 搜索平台 | Yandex Webmaster | Yandex 账号 | 全球第五大搜索引擎，俄罗斯 60%+ 份额。所有站点都接——即使不做俄语市场，Yandex 的行为因素分析数据也有参考价值。用 HTML meta 验证（`yandex-verification`），爬虫 UA 是 `YandexBot`，确认 `robots.txt` 没误拦。Yandex 也是 IndexNow 共同创建者，推送已覆盖。详见 `search-platforms.md`「步骤 6：Yandex Webmaster」 |
@@ -238,9 +240,8 @@ API 能立刻生效。AI 爬虫的 Bot Management 四字段已有 zone API，按
     加速工具」。域名有前世、急需覆盖旧记忆时，用 `scripts/gsc-request-indexing.mjs` 一条命令
     跑（受配额限制、自动断点续跑），**不要 agent 手工逐页点击**。
     Bing 侧不受影响，仍可视需要用「URL 提交」（不同平台，流程不变）。
-30. IndexNow 全量推一次 sitemap，记下条数与 HTTP 状态。
-31. **索引推送焊进出荷命令**：项目自己的 ship 命令末段带 IndexNow 增量推送，脚本在项目仓库内而不是指向 Skill 目录
-    （见 [`search-platforms.md`](../search-platforms.md)「挂进发布流程」）。这是静默收尾动作：漏了不会有任何东西变红。
+30. 按 [IndexNow 操作](../search-platforms.md#12-indexnow) 完成首次推送与上线后 sitemap 收尾。
+31. 按同一入口接好每条实际部署路径；Workers Builds 部署命令同样要带 IndexNow，完成实际配置与日志回读。
 32. 在正式域名上补段 4 闸门 6 的现场那一半：正式域名有流量后重开 pagespeed.web.dev 读 CrUX；仍无数据照旧记「现场无数据」。
 
 ### 步骤 check
@@ -274,13 +275,13 @@ API 能立刻生效。AI 爬虫的 Bot Management 四字段已有 zone API，按
 | P22 | 正式域名验证通过后索引开关已随之翻开，**没有**为了等批 B 接完而刻意继续 `noindex` / `Disallow: /`；确需暂缓公开的走 Access/Basic Auth 或单页 noindex，不是全站屏蔽 | `curl` 输出 + journal 时间顺序 |
 | B23 | 搜索平台优先建的是**网域（DNS 验证）**资源而不是网址前缀 | `.rankup/integrations.md` |
 | B24 | DNS 服务商的 OAuth 授权**由用户自己点**，没有代劳；Bing 没有走「从 GSC 导入」 | 同上 |
-| B25 | IndexNow 密钥文件线上正文逐字节等于密钥；GSC 与 Bing sitemap 已提交并记快照日期 | 同上 |
+| B25 | IndexNow 判据统一见 [`checklists.md` 段 5 的 IndexNow 行](../checklists.md)；站长工具操作见 [搜索平台接入](../search-platforms.md) | 同上 |
 | B26 | `hello@<domain>` 转发规则存在且收过测试邮件，三处地址一致；SPF / DKIM / DMARC 按 §8.6 核查，拒收/隔离策略已生效，外发认证通过或有依据标不适用；仅 `p=none` 不算已防护 | 线上 HTML + CLI/API 规则回读 + 权威/公共 DNS + `.rankup/integrations.md` |
 | B27 | 批 B 清单**每一行**都有状态（✅ 证据+日期 / ⏸ 阻塞原因 / ❌ 裁决依据），含 Ahrefs Site Audit 与兜底行；**兜底行按段 2 的市场填了具体平台或写明「该市场无额外引擎」** | `.rankup/integrations.md` |
 | I28 | 复核索引开关确实是开（应在 P22 已翻开，这里是复核），正式域名首页与内页 `curl` 无 `noindex`、robots 无 `Disallow: /` | `curl` 输出 |
 | I29 | 复核后重跑了段 4 闸门 1、2、4，「设计」项已转绿，canonical 指向正式域名 | `.rankup/audit.md` |
 | I30 | 索引放开后 GSC + Bing 已（重新）提交 sitemap 并记快照日期；有前世的域名这是放开索引后**第一件事**；默认不逐 URL/首页走 GSC 请求编入索引（需要催收录用 `gsc-request-indexing.mjs`） | `.rankup/integrations.md` |
-| I31 | 项目自己的 ship 命令末段带索引推送，脚本在项目仓库内 | 项目仓库 |
+| I31 | 按 [IndexNow 操作](../search-platforms.md#12-indexnow) 回读实际部署路径；判据同 B25 指针 | 项目仓库 + 触发器配置/构建日志 |
 | I32 | 正式域名上补了闸门 6 的现场读数，或如实记「现场无数据（流量不足）」 | `.rankup/baseline.md` |
 
 ### 输出
@@ -290,7 +291,7 @@ API 能立刻生效。AI 爬虫的 Bot Management 四字段已有 zone API，按
 - `.rankup/infrastructure.md`（含域名/zone/NS/DNSSEC 状态：已生效 / 待用户改 NS / 待传播）
 - `.rankup/releases.md`
 - **批 A 与批 B 每一行的状态逐条写进 `.rankup/integrations.md`**：已接入 / 卡住（附阻塞原因与需要用户做什么），并附各自的资源 ID。
-- IndexNow 密钥文件线上返回密钥本身，且至少完成一次全量推送（记下条数与 HTTP 状态）；
+- IndexNow 配置与推送证据（按 [搜索平台操作](../search-platforms.md#12-indexnow) 写入接入表）；
   两边站长工具的 sitemap 已提交，**并记下它是快照日期而不是实时值**。
 - 索引放开后 GSC + Bing 重新提交 sitemap 的记录（快照日期）。
 - `.rankup/audit.md`、`.rankup/baseline.md`、`.rankup/journal/<date>.md`
@@ -305,7 +306,7 @@ API 能立刻生效。AI 爬虫的 Bot Management 四字段已有 zone API，按
 四入口 301 一跳收敛，不是仅凭「已告知用户」结项；
 目标部署可通过 Cloudflare 部署状态关联到预期提交，真实域名返回预期 SSR HTML，关键 API 和实际 bindings 正常，上传、鉴权及适用的支付回调已用 live 凭证验证，回滚目标和方法已记录——仅有构建成功、Worker upload 成功或健康页 `200` 不算完成；
 批 B 清单每一行（含 Ahrefs Site Audit 与兜底行）都有状态，搜索平台资源**记的是资源 ID 不是资源名字**——网域资源覆盖全部子域，用错父级资源时单条 URL 的操作照样成功，只有聚合数字是别的站的，全程零报错；
-IndexNow 密钥文件经线上校验且首次推送已被接受；`hello@<domain>` 可收信且三处一致，邮件防冒充按 §8.6 验证生效；
+IndexNow 门禁见 [`checklists.md` 段 5 的 IndexNow 行](../checklists.md)；`hello@<domain>` 可收信且三处一致，邮件防冒充按 §8.6 验证生效；
 索引已放开、段 4 闸门 1/2/4 复核通过、索引放开后已重新提交 sitemap（GSC/Bing）。控制台显示"已启用"不算完成。
 
 ### 交给下一段的

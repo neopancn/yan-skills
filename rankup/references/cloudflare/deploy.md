@@ -103,9 +103,7 @@ wrangler 实际读的是这个生成配置。源 `wrangler.jsonc` 的 `main` 是
 需要一次命中 watch paths 的 push 才会构建。项目内如已有该仓库自己的部署实测记录文档，
 优先参考它，不要跨项目硬编码路径。
 
-**Git 集成缺少的东西，不要以为它会自动做**：不会跑冒烟测试、不会自动回滚、不会跑 IndexNow。
-回滚用控制台的 Rollback 或 `wrangler rollback`；IndexNow 在确认发布成功后本地手动跑
-`scripts/indexnow-submit.mjs`。
+**Git 集成不会自动补齐收尾**：冒烟测试和回滚按项目流程配置；回滚用控制台的 Rollback 或 `wrangler rollback`。IndexNow 的 Workers Builds 部署命令接法与实际配置/日志回读，统一见 [搜索平台发布流程](../search-platforms.md#挂进发布流程这一节是规则不是建议)。
 
 #### 9.1.1 实测注意（2026-09-06）
 

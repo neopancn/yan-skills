@@ -73,7 +73,7 @@ export function sceneFileNames(tag) {
  *   evalPage     可选，(expression[, timeoutMs]) => parsed JSON；tools-share 的
  *                launched.evalPage 直接传入
  *   env          可选，传给 opencli 的环境（tools-share 的 launched.env）
- *   windowMode   可选，background（默认）/ foreground
+ *   windowMode   可选，dedicated（默认）/ foreground（显式人工操作）
  *   timeoutMs    可选，单命令超时（默认 60s）
  *   note         可选，一句话说明为什么在这里取证（原样写进 census 文件顶层）
  *   screenshot   测试注入口：async (absPath) => void，缺省走 opencli screenshot
@@ -84,7 +84,7 @@ export async function captureScene({
   tag,
   evalPage = null,
   env = {},
-  windowMode = 'background',
+  windowMode = 'dedicated',
   timeoutMs = 60_000,
   note = null,
   screenshot = null,

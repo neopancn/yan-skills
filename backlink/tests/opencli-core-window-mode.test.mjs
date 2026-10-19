@@ -27,10 +27,10 @@ test('normalizeWindowMode: dedicated is now a recognised fifth mode', () => {
 });
 
 test('normalizeWindowMode falls back on anything unrecognised', () => {
-  assert.equal(normalizeWindowMode('nonsense'), 'background');
-  assert.equal(normalizeWindowMode(undefined), 'background');
-  assert.equal(normalizeWindowMode(null), 'background');
-  assert.equal(normalizeWindowMode(''), 'background');
+  assert.equal(normalizeWindowMode('nonsense'), 'dedicated');
+  assert.equal(normalizeWindowMode(undefined), 'dedicated');
+  assert.equal(normalizeWindowMode(null), 'dedicated');
+  assert.equal(normalizeWindowMode(''), 'dedicated');
   assert.equal(normalizeWindowMode('nonsense', 'active'), 'active', 'custom fallback is honoured');
 });
 
@@ -45,15 +45,15 @@ test('resolveBrowserWindowArgs: active/isolated now really reach the CLI (previo
   );
 });
 
-test('resolveBrowserWindowArgs: pre-existing foreground/background behaviour is unchanged', () => {
+test('resolveBrowserWindowArgs: explicit foreground is unchanged; default is dedicated', () => {
   assert.deepEqual(
     resolveBrowserWindowArgs(['browser', 's1', 'eval', 'x'], { windowMode: 'foreground' }),
     ['browser', 's1', '--window', 'foreground', 'eval', 'x'],
   );
   assert.deepEqual(
     resolveBrowserWindowArgs(['browser', 's1', 'eval', 'x'], {}),
-    ['browser', 's1', '--window', 'background', 'eval', 'x'],
-    'no windowMode/env at all still defaults to background',
+    ['browser', 's1', '--window', 'dedicated', 'eval', 'x'],
+    'no windowMode/env at all defaults to dedicated',
   );
   assert.deepEqual(
     resolveBrowserWindowArgs(['browser', 's1', 'eval', 'x'], { env: { OPENCLI_WINDOW: 'foreground' } }),
@@ -61,10 +61,10 @@ test('resolveBrowserWindowArgs: pre-existing foreground/background behaviour is 
   );
 });
 
-test('resolveBrowserWindowArgs: an unrecognised requested value still falls back to background (matches the old catch-all)', () => {
+test('resolveBrowserWindowArgs: an unrecognised requested value falls back to dedicated', () => {
   assert.deepEqual(
     resolveBrowserWindowArgs(['browser', 's1', 'eval', 'x'], { windowMode: 'typo' }),
-    ['browser', 's1', '--window', 'background', 'eval', 'x'],
+    ['browser', 's1', '--window', 'dedicated', 'eval', 'x'],
   );
 });
 
@@ -85,7 +85,7 @@ test('buildBatchBrowserArgs: active/isolated now really reach the CLI', () => {
   );
 });
 
-test('buildBatchBrowserArgs: pre-existing foreground/background behaviour is unchanged', () => {
+test('buildBatchBrowserArgs: explicit foreground is unchanged; default is dedicated', () => {
   const commands = [{ cmd: 'eval', args: { js: '1' } }];
   assert.deepEqual(
     buildBatchBrowserArgs('s1', commands, { windowMode: 'foreground' }),
@@ -93,11 +93,11 @@ test('buildBatchBrowserArgs: pre-existing foreground/background behaviour is unc
   );
   assert.deepEqual(
     buildBatchBrowserArgs('s1', commands, {}),
-    ['browser', 's1', '--window', 'background', 'batch', '--commands', JSON.stringify(commands)],
+    ['browser', 's1', '--window', 'dedicated', 'batch', '--commands', JSON.stringify(commands)],
   );
   assert.deepEqual(
     buildBatchBrowserArgs('s1', commands, { windowMode: 'typo' }),
-    ['browser', 's1', '--window', 'background', 'batch', '--commands', JSON.stringify(commands)],
-    'unrecognised value still falls back to background, matching the old catch-all',
+    ['browser', 's1', '--window', 'dedicated', 'batch', '--commands', JSON.stringify(commands)],
+    'unrecognised value falls back to dedicated',
   );
 });

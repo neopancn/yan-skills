@@ -202,8 +202,7 @@ page every time and retries.
 That is the literal collision name this law exists to prevent, printed by the
 tool itself, and an agent that consults `--help` for syntax after reading this
 law will see the CLI modelling the anti-pattern. Trust the law. The same help
-text also shows a trailing `--window background`, which does work but is now
-redundant — see <law-ref id="background-by-default"/>.
+text also shows a trailing `--window background`, which explicitly reuses the owner's window; routine work now uses dedicated — see <law-ref id="background-by-default"/>.
 </help-text-bait>
 <cleanup>
 Release the lease with `opencli browser &lt;session&gt; close` when done. A session
@@ -237,15 +236,10 @@ whatever "current" happens to mean at that instant.
 
 <law id="background-by-default">
 <statement>
-Background is the default. Do not override it. `--window foreground` is for the
-one case where the person has to finish something by hand; `--window isolated`
-keeps automation in a window of its own. The flag, when you do pass one, sits
-**between** the session name and the subcommand:
-`opencli browser &lt;session&gt; --window isolated &lt;command&gt;`.
+Dedicated is the default: a separate, unfocused automation window, placed on a secondary display when available. `--window foreground` is only an explicit option for human CAPTCHA/login completion. Explicit `--window` and `OPENCLI_WINDOW` still override the JS wrapper default. Quota-report scripts retain their existing virtual-display/visibility strategy. The flag sits between the session name and subcommand:
+`opencli browser &lt;session&gt; --window dedicated &lt;command&gt;`.
 
-Requires the OpenCLI extension at **1.0.32 or newer** (`opencli doctor` prints
-it). On older builds the default is foreground and every single command needs
-`--window background` spelled out.
+Requires a dedicated-capable OpenCLI CLI and extension (extension 1.5.x). The historical background/foreground measurements below describe older builds, not the current default.
 </statement>
 <why>
 Background mode runs the owner's real logged-in Chrome without raising the

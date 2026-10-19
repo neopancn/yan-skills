@@ -18,10 +18,11 @@
 - [十四、占位红线（段 3 / 段 4 / 段 5）](#十四占位红线段-3--段-4--段-5)
 - [十五、面板与网页操作「对不上」时的回流：先分诊，确认是漂移才改原文档](#十五面板与网页操作对不上时的回流先分诊确认是漂移才改原文档)
 - [十六、组件库红线（段 3 / 段 4）：UI 只准来自组件库，不许自己造控件](#十六组件库红线段-3--段-4ui-只准来自组件库不许自己造控件)
-- [十七、IndexNow 推送默认 diff，不全量](#十七indexnow-推送默认-diff不全量)
+- [十七、IndexNow 发布推送](#十七indexnow-发布推送)
 - [十八、ID / token / 密钥等标识符禁止从截图或记忆中抄录](#十八id--token--密钥等标识符禁止从截图或记忆中抄录)
 - [十九、驱动浏览器等待第三方页面渲染：一条判断链，不是一条规则](#十九驱动浏览器等待第三方页面渲染一条判断链不是一条规则)
 - [二十、省 token 工作流](#二十省-token-工作流)
+- [二十一、禁止建设中内容与功能区域](#二十一禁止建设中内容与功能区域)
 
 这份文件是 `SKILL.md` 3.0 从主文件里搬出来的「怎么干活」那一层：执行纪律、红线判定顺序、
 配额、浏览器与取数、落盘、令牌、完成标准，以及每条规则背后的事故。主文件只留路由与七段硬规则，
@@ -118,6 +119,8 @@
 
 ### 取数的强制优先级（禁止跳级）
 
+公开 SERP 的顺序只按 [SERP 取数路线](seo-serp.md#serp-取数路线)，不套用以下阶梯。
+
 1. **现有脚本**（`node scripts/xxx.mjs`）；
 2. **HTTP/REST API**（`fetch` / `curl`）→ 用完固化成脚本；
 3. **用户浏览器 + 现有自动化脚本**（底层走 OpenCLI）→ 没有 API 且需要登录态时；
@@ -135,7 +138,7 @@
 
 **这个阶梯管「取数」，不替代「亲眼看」。** 任何调研在动用任何一级之前，先去 Google、Bing 与目标市场的
 本地引擎把词搜一遍，记第一页的页面类型——数据平台给的是模型外推，首页是搜索引擎此刻真正端给用户的东西。
-公开 SERP 也用 `opencli browser <描述性会话名>` 驱动用户的 Chrome（dedicated 窗口），并显式指定地区与语言。
+公开 SERP 的通道见 [SERP 取数路线](seo-serp.md#serp-取数路线)，并显式指定地区与语言。
 
 ### 抓后台数据的顺序（曾经写反过）
 
@@ -188,13 +191,14 @@ opencli browser "$S" eval '(async()=>{ /* fetch(..., {credentials:"include"}) */
 
 浏览器窗口默认只落副屏/虚拟屏并自动铺开（无副屏才回主屏），规则见 [opencli Skill](../../opencli/SKILL.md#专用窗口与可见性)；不要因窗口池满就提前排队等槽位，实际收到 `dedicated-pool-exhausted` 后再等，也不要改用 Playwright 类沙箱浏览器。
 
-**一切浏览器动作（含测试、验收、E2E、截图和公开 SERP）一律用 OpenCLI 驱动用户本机的 Chrome（dedicated 窗口）；沙箱浏览器不作为本机选项。**
+**浏览器动作默认用 OpenCLI 驱动用户本机的 Chrome（dedicated 窗口）；沙箱浏览器（Playwright / agent-browser / headless）仍禁止。**
+唯一例外：Claude 桌面 app 内置浏览器（`mcp__Claude_Browser__*`）仅供 Claude 主线程只读查看公开页面（SERP、竞品首页、自己的站）；Codex 与脚本仍一律 opencli，涉及登录态 / 配额的站（Semrush、Similarweb、GSC、ChatGPT 探针等）也仍只用 opencli，SERP 顺序见 [取数路线](seo-serp.md#serp-取数路线)。
 沙箱没有用户的 cookie：要登录的目标要么跳登录页，要么以匿名身份返回**看起来正常但内容不同**的结果
 （配额更低、字段更少、国家库不同）。这种失败会伪装成「这个工具没有这项数据」，真相是「你没登录」。
 
 公开搜索须显式指定地区与语言；登录态页面直接使用用户的浏览器。
 
-**这个「用户的浏览器」必须由 `opencli` 驱动，不是随便一个能操作到用户已登录浏览器的工具都算数。**
+**需要登录态 / 配额的「用户的浏览器」必须由 `opencli` 驱动，不是随便一个能操作到用户已登录浏览器的工具都算数。**
 即便是 Claude 自带的浏览器自动化工具（如 Claude in Chrome / `claude-in-chrome`），技术上同样能
 操作用户已登录的真实浏览器、同样能通过上面「无痕窗口是不是同一个东西」的判据，但它**不能替代**
 `opencli`。差别不在好不好用，在**操作完之后剩下什么**：`opencli` 有 adapter 的编写与自修复能力
@@ -209,7 +213,7 @@ opencli browser "$S" eval '(async()=>{ /* fetch(..., {credentials:"include"}) */
 
 未安装：`npx skills add yan-labs/yan-skills --skill opencli -g -y`。
 
-**反过来同样是硬规则：目标平台有 API 或 CLI、且本机已有凭据能证明（`wrangler whoami`、
+**除 [SERP 取数路线](seo-serp.md#serp-取数路线)外，反过来同样是硬规则：目标平台有 API 或 CLI、且本机已有凭据能证明（`wrangler whoami`、
 `gh auth status` 一类能给出肯定结果的命令），一律走 API/CLI，禁止开浏览器去后台点。**
 只有两种情况例外，且只做那一步就退回 API：API 确实不覆盖某个操作；或需要一次性 OAuth /
 App 安装授权（只能由用户本人在浏览器里点一次，例如给某个 GitHub org 装 Cloudflare 的
@@ -298,7 +302,7 @@ Skill 集合不一样，文档只保证「该用什么」；遇缺就跳过会�
 | 陷阱 | 判据 |
 |---|---|
 | 全局有个 Skill 叫 `seo-audit`，rankup 自己有个脚本叫 `seo-audit.mjs`——同名，方向相反 | **不要加载那个 Skill。** 它开场先问六个问题，与「全权委托」正面冲突；体检就跑 `scripts/seo-audit.mjs`，判读用 `seo-box.md` |
-| `/write` 依赖五个附属 Skill（`writing-fragments` / `writing-shape` / `writing-beats` / `edit-article` / `humanizer-zh`），不一定装在当前机器 | **先 `ls` 确认五个都在，缺的用 `find-skills` 装齐再加载**；装不上才退到 `/human-writing` + `/shuorenhua` 并说明原因（`skill-ecosystem.md`「缺 Skill 的处置」） |
+| `/write` 是中文写作的唯一入口 | **用 `/write`，它自带起稿、改稿与去 AI 味体检，不依赖别的 Skill**；分工见 `skill-ecosystem.md`「`/write`」 |
 
 `ai-seo` 与 `seo-geo` 只取参考文档，不跑 `seo-geo/scripts/*.py`（走付费凭据，且与 rankup 取数口径重复）。
 `keyword-research` 自己不带数据源，由 rankup 先取数，它只做意图分类与聚簇，**严禁跑它的 Score 相**（两个输入都是模型自己编的）。
@@ -461,11 +465,9 @@ Skill 集合不一样，文档只保证「该用什么」；遇缺就跳过会�
 ### 占位的五个类型
 
 1. **占位链接**：`href="#"`、`href="javascript:void(0)"`（或任何 `javascript:void` 变体）、指向 `example.com` /
-   `example.org` / `example.net` 的链接、指向站内不存在页面（404）的 `href`、锚文本或链接目标是「coming soon」
-   一类的空壳、社交图标 `href="#"`（图标位摆在那但没有真实主页）。
-2. **占位文案**：lorem ipsum、`TODO` / `TBD` / `FIXME` 标记、"Your text here"、单独出现的 "Lorem"、
-   方括号模板变量（如 `[Company]`、`[Product Name]`、`[Your Name]`、`[Address]`）、"Coming soon" /
-   "敬请期待" / "即将上线" 这类空壳文案、未替换的模板变量（如 `{{title}}`、`{{company_name}}`）。
+   `example.org` / `example.net` 的链接、指向站内不存在页面（404）的 `href`、锚文本或链接目标违反[二十一](#二十一禁止建设中内容与功能区域)的空壳、社交图标 `href="#"`（图标位摆在那但没有真实主页）。
+2. **占位文案**：lorem ipsum、`FIXME` 标记（建设中类文案统一见[二十一](#二十一禁止建设中内容与功能区域)）、"Your text here"、单独出现的 "Lorem"、
+   方括号模板变量（如 `[Company]`、`[Product Name]`、`[Your Name]`、`[Address]`）、违反[二十一](#二十一禁止建设中内容与功能区域)的空壳文案、未替换的模板变量（如 `{{title}}`、`{{company_name}}`）。
 3. **占位图片**：`placehold.co`、`via.placeholder.com`、`picsum.photos`、`dummyimage.com` 这类占位图床、
    文件名含 `placeholder` 的图片（如 `placeholder.png`）、空 `src`（`src=""`）、缺图导致 broker/图标位显示
    浏览器默认破图标。
@@ -477,10 +479,10 @@ Skill 集合不一样，文档只保证「该用什么」；遇缺就跳过会�
 ```bash
 # 占位链接
 grep -noE 'href\s*=\s*"#"|href\s*=\s*"javascript:void\(0?\)?"|href\s*=\s*"[^"]*example\.(com|org|net)[^"]*"' <file-or-html>
-grep -noiE '<a[^>]*>\s*coming soon\s*</a>' <file-or-html>
 
 # 占位文案
-grep -noiE 'lorem ipsum|\b(TODO|TBD|FIXME)\b|your text here|coming soon|敬请期待|即将上线' <file-or-html>
+grep -noiE 'lorem ipsum|\bFIXME\b|your text here' <file-or-html>
+# 建设中类文案用二十一的渲染产物检查器，不对裸源码套词表
 grep -noE '\[(Company|Company Name|Product|Product Name|Your Name|Address)\]|\{\{\s*[a-zA-Z_.]+\s*\}\}' <file-or-html>
 
 # 占位图片
@@ -552,15 +554,9 @@ Semrush / Similarweb / seo.web.cafe（含哥飞 AI）/ 哥飞论坛 / GSC、Bing
 
 ---
 
-## 十七、IndexNow 推送默认 diff，不全量
+## 十七、IndexNow 发布推送
 
-`ship` 命令里的 IndexNow 脚本**默认只推新增的 URL**——对比上一次成功推送的记录
-（`.rankup/indexnow-last.json`），只把 sitemap 里新出现的 URL 发给 IndexNow。
-
-| 规则 | 为什么 | 反面教材 |
-|---|---|---|
-| 默认 diff 推送：脚本维护一份上次推送的 URL 集合，只推新增的；全量推送用 `--all` 显式触发 | 每次全量推 19 条（以后更多）全是重复信号，IndexNow 的设计意图就是「变了才推」；搜索引擎对重复推送不报错但会降低信任权重 | 每次 `pnpm ship` 把全站 URL 无差别推一遍 |
-| 上次推送记录是**本地状态**，不进 git（`.gitignore`），丢了等于下次全推一次，不影响正确性 | 换机器或首次推送自然退化为全量，不需要额外处理 | 把推送记录放进 git，每次部署制造一个 diff 噪音提交 |
+操作与 lastmod 窗口唯一源见 [`search-platforms.md` IndexNow](search-platforms.md#12-indexnow)，验收只看 [`checklists.md` 段 5 的 IndexNow 行](checklists.md)。
 
 ---
 
@@ -589,3 +585,13 @@ CNAME 值、TXT 记录值等）时，**必须从页面元素直接获取文本�
 3. **排查与重活按收益委派**：独立且能完整描述的重活适合委派，以降低主线程上下文成本；串行定位可由主执行者完成。模型路由见本章「模型档位」，派单与收回按「主 Agent 与子 Agent 分工」，主 Agent 核对依据后再采用简报。
 4. **后台任务善用自动通知**：后台任务完成会自动通知，不要轮询进度；子 agent 用 Monitor 等待时写明退出条件和超时。
 5. **循环与精确取数防 rtk 篡改**：rtk 会把 `for … done` / `while read` 循环改坏（报 parse error near done），循环或精确取数命令前加 `RTK_DISABLED=1`。
+
+## 二十一、禁止建设中内容与功能区域
+
+**规则：rankup 任何环节产出的站点、页面、设计稿、样张与功能，都不得出现「建设中」类文案或未实现的功能区域。** 半成品观感会伤害用户信任与质量判断；把未完成能力摆出来也会让用户误以为已经可用。
+
+- **文案范围**：正文、按钮、卡片、空状态、title、description、OG、alt、aria-label、JSON-LD、错误页、sitemap/feed 文字、llms.txt 等任何用户可见处均适用。禁止 coming soon、under construction、work in progress、WIP、TBD、TODO、stay tuned、check back、launching soon、not yet available、will be added/available、in development、待定、建设中、敬请期待、即将上线及同义表达；机械词表的唯一数组在 [`no-wip-check.mjs`](../scripts/no-wip-check.mjs)，同义表达仍须人工核对。
+- **功能范围**：未实现的功能不展示入口、不留区块；禁止点了无响应或只弹待上线提示的按钮、没有后端的提交表单、无数据的期待卡片、占位 Pricing/Newsletter/Login 入口及空壳标签页。缺数据就省略该行或整个区块，不写占位话术。
+- **设计范围**：设计稿、样张与设计说明同样适用；不能设计待上线状态的卡片或入口，也不能规定这类文案。页面与功能范围只纳入本版本能完整实现的能力。
+- **判据**：渲染内容与附属公开文件词表命中为零；逐入口实际操作有实现与结果，需要后端的入口有真实闭环；设计稿与说明无待上线状态。机器检查不能证明功能闭环或覆盖所有同义表达，须配合逐入口与设计回读；阶段闸门只见 [`checklists.md`](checklists.md) 段 3、4、7。
+- **例外**：表单控件的 `placeholder` 属性是输入提示，不算此类文案；代码里的 TODO 注释不属于用户可见文案，但不得渗入页面。代码标识符与 CSS 类名不是用户文案，不按裸源码词表命中判失败。

@@ -28,6 +28,8 @@
  *   node semrush-report.mjs --report backlinks-overview --domain example.com
  *   node semrush-report.mjs --self-test
  *
+ * 2026-10-04：eval 遵守显式 --window；--date YYYYMMDD 传历史报表日期，日期须由页面回读核验。
+ * --sort-change 按主要页面流量变化降序；--capture-scene 成功也保存截图与 census。
  * 可选：--scroll-segments[=N] 分段滚动（默认**关闭**，理由见主流程里 scrollSegments
  *       的注释）、--scroll-pause 每段等待秒数（默认 1.5）。
  *
@@ -440,7 +442,7 @@ function pick(lines, label, pattern, span = 6) {
  * 但仍然兜一层，免得下次又栽。
  */
 async function evalPage(js) {
-  const r = await opencli(['browser', session, '--window', 'background', 'eval', js]);
+  const r = await opencli(['browser', session, '--window', launchWindow, 'eval', js]);
   try {
     const j = firstJson(r.stdout);
     return typeof j === 'string' ? JSON.parse(j) : j;
@@ -758,6 +760,14 @@ async function loadReport(url, spec, {
     await automation?.ensureVisible('report-navigation');
     await evalPage(`(() => { location.href = ${JSON.stringify(url)}; return JSON.stringify({ nav: 1 }); })()`);
     await sleep(settle * 1000);
+    if ((flags['sort-change'] || flags['sort-traffic']) && name === 'organic-pages') {
+      const selector = flags['sort-change'] ? '[data-at="changeOfTrafficSigned-header"]' : '[data-at="traffic-header"]';
+      const sorted = await evalPage(`(() => JSON.stringify({sort:document.querySelector('${selector}')?.getAttribute('aria-sort')}))()`);
+      if (sorted?.sort !== 'descending') {
+        await opencli(['browser', session, '--window', launchWindow, 'click', selector]);
+        await sleep(2500);
+      }
+    }
     // 见调用点关于默认值的长注释。滚完回顶，后面还要读页头。
     if (scrollSegments) {
       try {
@@ -1807,7 +1817,9 @@ let output;
 let launched;
 try {
   const tool = launched = await ensureTool();
-  const url = `${APP_ORIGIN}${spec.path(target, db)}`;
+  const reportPath = name === 'organic-pages' ? `/analytics/toppages/?searchType=domain&q=${encodeURIComponent(target)}&db=${db}` : spec.path(target, db);
+  const dateSuffix = typeof flags.date === 'string' && /^\d{6}(\d{2})?$/.test(flags.date) ? `&date=${flags.date.slice(0,6)}` : '';
+  const url = `${APP_ORIGIN}${reportPath}${dateSuffix}`;
   // **分段滚动，默认关闭。**
   //
   // 为什么默认关：2026-08-29 实测这几条路由 `body.scrollHeight === window.innerHeight`
@@ -2055,6 +2067,7 @@ try {
     rollup,
     reads: loaded.reads,
     parsed,
+    evidence: flags["capture-scene"] ? await captureScene({ session, outDir: evidenceDir, evalPage, tag: "captured", note: `semrush-report ${name} ${target}` }) : null,
     rawText: cap.bodyText.slice(0, 20000),
     rawPages: spec.paginated ? rawPages : null,
     automationWindow: automationWindowOutput(),

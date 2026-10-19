@@ -141,7 +141,7 @@
 | 条目 | 去向 | 理由 | 证据等级 |
 |---|---|---|---|
 | OpenCLI 扩展重启后可能断开，需要唤醒 Chrome | ⑤ `opencli` | 浏览器驱动与会话故障，环境类，按 opencli 的分诊流程处理；rankup 不收 | 【经验】单项目 |
-| PageSpeed 网页版需要 Chrome 真在前台才出分 | 已覆盖，改指针 | 已在 `scripts/pagespeed.mjs` 头注覆盖；不新增候选，不重复晋升 | 【实测】2026-09-30 复核 |
+| PageSpeed 网页版需要标签页可见；dedicated 专用窗口可出分 | 已覆盖，改指针 | 2026-10-04 修订：见 `scripts/pagespeed.mjs` 头注，默认 dedicated；不要求抢用户前台窗口 | 【实测】2026-10-04 brief 提供的本机证据，本轮未重跑 |
 | 后台 `&` 启动的派单任务不给完成通知 | ⑤ `agent-fleet` / Agent 全局规则 | 与 rankup 链路无关，是派单与后台任务的使用约定 | 【经验】 |
 | shell 的 `for` 循环在 token 压缩代理下报 parse error | ⑤ Agent 全局规则（或 ③ `lessons.md`，若只影响 rankup 命令） | 本机环境问题，不属于 rankup 流程 | 【实测】本机 |
 

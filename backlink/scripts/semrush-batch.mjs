@@ -248,7 +248,8 @@ if (!todo.length) process.exit(0);
 
 const launched = await launchTool({
   session, tool: 'semrush', node: flags.node,
-  window: flags.window === 'foreground' ? 'foreground' : 'background',
+  // --window foreground 仅供人工登录或亲自查看面板时显式使用。
+  window: flags.window || process.env.OPENCLI_WINDOW || 'dedicated',
   wait: Number(flags.wait || 7), timeout: Number(flags.launchTimeout || 60),
   allowParallelSession: Boolean(flags['allow-parallel-session']),
 });

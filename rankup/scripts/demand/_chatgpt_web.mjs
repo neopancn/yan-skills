@@ -82,7 +82,15 @@ export function closeSession(web) {
   return result;
 }
 
-/** 已开路径已实测；未验证的模式切换停止，避免未确认状态下发送。 */
+/** URL 与临时页声明/横幅同时存在才放行；登录状态及个性化菜单不作判据。 */
+export function temporaryPageNotice(state) {
+  let url;
+  try { url = new URL(state?.url); } catch { return ''; }
+  if (url.origin !== 'https://chatgpt.com' || url.searchParams.get('temporary-chat') !== 'true') return '';
+  const lines = String(state?.text || '').split('\n');
+  return lines.filter(line => /不会.*记忆|不.*使用.*记忆|won.t.*memor|doesn.t.*memor|does not.*memor|won.t.*use.*memor/i.test(line) || /^\s*(临时聊天|temporary chat)\s*$/i.test(line)).join('\n');
+}
+
 export function ensurePrivacySwitches(web) {
   // 2026-10-07 ChatGPT 改版适配：旧的 app-shell-header-context-menu-surface 表面已下线。
   // 会话级个性化控制是输入框区一个「个性化」/「不个性化」按钮（点击弹 menuitemradio）。
@@ -198,13 +206,14 @@ export function failedPage(web) {
 
 export async function sendTurn({ prompt, timeoutS, web, continuation = false, natural = false }) {
   const t0 = Date.now();
-  const deadline = t0 + timeoutS * 1000;
+  let deadline = t0 + timeoutS * 1000;
   const browser = (...args) => browserCommand(web, args, { timeoutS: Math.max(1, Math.floor((deadline - Date.now()) / 1000)) });
   let notice = web.temporaryNotice || '';
   if (!continuation) {
     const opened = await openSession({ web, timeoutS });
     if (!opened.ok) return opened;
     notice = web.temporaryNotice;
+    deadline = Date.now() + timeoutS * 1000;
   }
   const state = natural ? parseEvalJson(browser('eval', `JSON.stringify({count:document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]').length,lastText:(()=>{const a=[...document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]')];return a.length?a[a.length-1].innerText:''})(),blocked:/验证码|captcha|verify you are human|too many requests|usage limit|reached the limit|达到.*上限/i.test(([...document.querySelectorAll('[data-markdown-text-style="assistant-message"],[data-message-author-role="assistant"]')].reduce((t,a)=>t.split(a.innerText).join(''),document.body.innerText))),auth:!document.querySelector('[contenteditable="true"][role="textbox"]') && /登录|log in|sign in/i.test(document.body.innerText)})`).stdout) : null;
   if (state?.blocked || state?.auth) return { ...failedPage(web), ok: false, failure: state.auth ? 'auth' : 'rate-limit', error: '临时页出现登录、验证码或限流提示', durationMs: Date.now() - t0 };

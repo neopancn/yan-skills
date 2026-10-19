@@ -31,13 +31,13 @@ const rows = fs.readFileSync(a.queue, 'utf8').split(/\r?\n/).filter(Boolean)
   .map((l) => { const [session, url, state] = l.split('\t'); return { session, url, state }; })
   .filter((r) => r.state === 'filled-no-captcha');
 
-const ocli = async (s, ...argv) => (await opencli(['browser', s, ...argv], { windowMode: 'background', timeoutMs: 90_000 })).stdout;
+const ocli = async (s, ...argv) => (await opencli(['browser', s, ...argv], { windowMode: 'dedicated', timeoutMs: 90_000 })).stdout;
 const ev = async (s, js) => { try { return JSON.parse(await ocli(s, 'eval', js)); } catch { return null; } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const evidenceDir = defaultSceneDir({ out: a.out || null, script: 'adapter-phpld-submit' });
 // 每行 state 落点一对现场。永不 throw；行内带路径。
 const sceneFor = (res, note) => captureScene({
-  session: res.session, outDir: evidenceDir, windowMode: 'background',
+  session: res.session, outDir: evidenceDir, windowMode: 'dedicated',
   tag: `${String(res.url || '').replace(/^https?:\/\//, '').replace(/[^a-z0-9.-]/gi, '_').slice(0, 60)}-${res.state}`,
   note,
 });

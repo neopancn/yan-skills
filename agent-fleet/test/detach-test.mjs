@@ -12,6 +12,14 @@ mkdirSync(runs);
 const stub = join(scratch, 'runner');
 writeFileSync(stub, `#!/bin/sh
 out=
+if [ "$1" = 'app-server' ]; then
+  exec node -e 'require("node:readline").createInterface({input:process.stdin}).on("line", line => {
+    const request = JSON.parse(line);
+    if (request.id !== undefined) console.log(JSON.stringify({id:request.id,result:{}}));
+  });'
+fi
+if [ -n "$FLEET_TEST_ARGS" ]; then printf '%s\\n' "$@" > "$FLEET_TEST_ARGS"; fi
+if [ -n "$FLEET_TEST_SESSION" ]; then printf '{"type":"thread.started","thread_id":"%s"}\\n' "$FLEET_TEST_SESSION"; fi
 while [ "$#" -gt 0 ]; do
   if [ "$1" = '-o' ]; then shift; out=$1; fi
   shift
@@ -49,9 +57,12 @@ writeFileSync(loader, `export async function resolve(specifier, context, next) {
 }`);
 const cfg = join(scratch, 'models.json');
 writeFileSync(cfg, JSON.stringify({ stub: { model: 'stub-gemini', baseURL:'http://127.0.0.1:1', apiKeyEnv:'FLEET_TEST_KEY' } }));
-const env = { ...process.env, FLEET_TEST_SLEEP:'1', FLEET_TEST_EXIT:'0', AGENT_FLEET_RUNS_DIR:runs, FLEET_CODEX_BIN:stub,
+const env = { ...process.env, FLEET_TEST_SLEEP:'1', FLEET_TEST_EXIT:'0', AGENT_FLEET_RUNS_DIR:runs, FLEET_CODEX_BIN:stub, FLEET_CODEX_BACKEND:'exec',
   FLEET_TEST_PIDS:join(scratch,'pids'), FLEET_TEST_RESULT:join(scratch,'gateway-result'),
   FLEET_TEST_KEY:'fake-test-key', NODE_OPTIONS:`--no-warnings --experimental-loader=${pathToFileURL(loader).href}` };
+// 测试启动器不能继承宿主 fleet 的执行器身份。
+delete env.FLEET_DETACHED_RUN_ID;
+delete env.FLEET_DETACHED_BATCH;
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 function cliRun(args, extra={}) {
   return new Promise((r,reject)=>{
@@ -95,7 +106,38 @@ const speaking=await launch('run',{FLEET_TEST_SLEEP:'3'});await sleep(500);
 assert.equal((await cliRun(['say',speaking,'hello gateway'])).code,0);
 assert.equal((await cliRun(['wait',speaking])).code,0);assert.match(readFileSync(state(speaking).logPath,'utf8'),/收到插话.*hello gateway/);
 assert.equal((await cliRun(['resume',gateway,'continue','--models-config',cfg])).code,0);
-assert.match((await cliRun(['resume',code])).stderr,/Codex.*不支持/);
+assert.match((await cliRun(['resume',code])).stderr,/Codex.*没有/);
+const sessionId = await launch('code', { FLEET_TEST_SESSION:'detached-thread' }, ['--low','--review','--name','codex-continued','--report',join(scratch,'report.md')]);
+const sessionWait=await cliRun(['wait',sessionId]);
+assert.equal(sessionWait.code,0);
+assert.match(sessionWait.stdout,/Codex：steer 0 次，resume 0 次/);
+assert.equal(state(sessionId).threadId,'detached-thread');
+assert.equal(state(sessionId).brief.backend,'codex-exec');
+assert.equal(state(sessionId).brief.steerCount,0);
+const resumeArgsPath=join(scratch,'resume-args');
+const continued=await cliRun(['resume',sessionId,'追加要求','--no-wait'],{FLEET_TEST_SESSION:'detached-thread',FLEET_TEST_ARGS:resumeArgsPath});
+assert.equal(continued.code,0,continued.stderr);
+const continuedId=continued.stdout.match(/runId: (.+)/)[1];
+assert.equal((await cliRun(['wait',continuedId])).code,0);
+const continuedState=state(continuedId);
+assert.equal(continuedState.threadId,'detached-thread');
+assert.equal(continuedState.resumedFrom,sessionId);
+assert.equal(continuedState.name,'codex-continued');
+assert.equal(continuedState.reportPath,join(scratch,'report.md'));
+assert.equal(continuedState.review,true);
+assert.equal(continuedState.low,true);
+const resumedArgs=readFileSync(resumeArgsPath,'utf8').trim().split('\n');
+assert(resumedArgs.includes('resume') && resumedArgs.includes('detached-thread'));
+assert(resumedArgs.includes('read-only') && resumedArgs.includes('model_reasoning_effort=low'));
+console.log('Codex CLI resume: preserved thread, low/review/name/report and metadata');
+const leftoverId='codex-executor-alive';
+writeFileSync(join(runs,leftoverId+'.pid.json'),JSON.stringify({runId:leftoverId,model:'gpt-6.1-sol',pid:0,codexPid:process.pid,threadId:'detached-thread',cwd:scratch}));
+const refused=await cliRun(['resume',leftoverId,'继续','--no-wait']);
+assert.equal(refused.code,1);
+assert.match(refused.stderr,/执行器仍在运行.*未启动重复续跑/);
+assert.equal(existsSync(join(runs,leftoverId+'.inbox')),false);
+
+
 // 等完整 30 秒心跳；顺带验证 SIGHUP、wait 超时和 Codex say 提示。
 const beat=await launch('code',{FLEET_TEST_SLEEP:'34'});
 await sleep(500);const before=state(beat).heartbeatAt;process.kill(state(beat).pid,'SIGHUP');
@@ -199,6 +241,43 @@ assert(abnormalRows.every(r=>['running','abnormal'].includes(r.status ?? r.state
 assert(abnormalRows.some(r=>r.runId===synthetic.runId && r.status==='abnormal'));
 assert.match((await cliRun(['status','--running'])).stdout,/可能因机器重启\/强制休眠中断，可用 fleet resume synthetic-abnormal/);
 console.log('PASS default blocking / no-wait / attach / aliases / batch / metadata / status filtering / finished wait');
+
+// 仅用已有执行器桩：短命 shell 退出，真实模拟 launcher 孤儿化。
+for (const [label, marker, warned] of [
+  ['claudecode', {CLAUDECODE:'1', CLAUDE_CODE_ENTRYPOINT:''}, true],
+  ['entrypoint', {CLAUDECODE:'', CLAUDE_CODE_ENTRYPOINT:'cli'}, true],
+  ['terminal', {CLAUDECODE:'', CLAUDE_CODE_ENTRYPOINT:''}, false],
+]) {
+  const outPath=join(scratch,`orphan-${label}.out`), errPath=join(scratch,`orphan-${label}.err`);
+  const orphanEnv={...env,...marker,FLEET_NODE:process.execPath,FLEET_CLI:cli,FLEET_CWD:scratch,
+    FLEET_OUT:outPath,FLEET_ERR:errPath,FLEET_NAME:`orphan-${label}`,FLEET_TEST_SLEEP:'5'};
+  const shell=spawn('/bin/sh',['-c','"$FLEET_NODE" "$FLEET_CLI" code fixture --cwd "$FLEET_CWD" --name "$FLEET_NAME" > "$FLEET_OUT" 2> "$FLEET_ERR" &'],{env:orphanEnv,stdio:'ignore'});
+  await new Promise((resolve,reject)=>{shell.once('error',reject);shell.once('close',resolve);});
+  await sleep(2200);
+  const rows=JSON.parse((await cliRun(['status','--running','--json'])).stdout);
+  const row=rows.find(r=>r.name===orphanEnv.FLEET_NAME);
+  assert(row, 'orphan fixture still running');
+  const stderr=readFileSync(errPath,'utf8');
+  const log=readFileSync(row.logPath,'utf8');
+  if(warned) {
+    assert.equal(row.launchDetached,true);
+    assert.match(stderr,/检测到脱离启动/);assert(stderr.includes(row.runId));
+    assert(log.startsWith(stderr.trim()),'warning at log head');
+    assert.match((await cliRun(['status','--running'])).stdout,/⚠ detached-launch/);
+  } else {
+    assert.equal(stderr,'');assert(!Object.hasOwn(row,'launchDetached'));assert(!log.includes('检测到脱离启动'));
+  }
+  assert.equal((await cliRun(['wait',row.runId])).code,0,'execution exit unchanged');
+  const finalRow=JSON.parse((await cliRun(['status','--json'])).stdout).find(r=>r.runId===row.runId);
+  assert.equal(Boolean(finalRow.launchDetached),warned,'terminal metadata keeps guard result');
+  assert.match(readFileSync(row.logPath,'utf8'),/stub log/,'log output preserved');
+  assert.match(readFileSync(outPath,'utf8'),/verdict: ok/,'launcher still prints original summary');
+}
+const normalGuard=await cliRun(['code','fixture','--cwd',scratch,'--name','normal-guard'],{CLAUDECODE:'1',FLEET_TEST_SLEEP:'3'});
+assert.equal(normalGuard.code,0);assert.equal(normalGuard.stderr,'','normal parent has no added output');
+const normalRow=JSON.parse((await cliRun(['status','--json'])).stdout).find(r=>r.name==='normal-guard');
+assert(!Object.hasOwn(normalRow,'launchDetached'));assert(!readFileSync(normalRow.logPath,'utf8').includes('检测到脱离启动'));
+console.log('PASS launch guard: CLAUDECODE / ENTRYPOINT orphan warnings, log head, running and terminal status; terminal orphan and normal parent silent');
 
 // 默认启动独立子shell：launcher仍在等待时杀整组，新shell按短名发现和等待。
 const demoOut=join(scratch,'demo-launch.txt');const demoErr=join(scratch,'demo-launch.err');

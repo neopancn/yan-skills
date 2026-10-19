@@ -446,18 +446,35 @@ async function main() {
           if (!id) throw new Error('usage: products links <id>');
           const data = await cmdProductsLinks(id);
           if (asJson) printJson(data);
-          else
-            printTable(
-              (data ?? []).map((l) => ({
+          else {
+            // API 的 paymentLinkUrl 恒为空；支付页 prod 在 app.anyway.sh，stg 在 stg.anyway.sh（anyway.sh/pay/* 是 404）。
+            // 用 linkId 拼出真实地址，并实际请求一次，页面 404 或标题含 "Page not found" 就标 FAIL。
+            const base = getEnvConfig(envName).dashboardUrl.replace(/\/$/, '');
+            const rows = [];
+            for (const l of data ?? []) {
+              const payUrl = l.linkId ? `${base}/pay/${l.linkId}` : '';
+              let check = '';
+              if (payUrl) {
+                try {
+                  const r = await fetch(payUrl);
+                  const html = r.ok ? await r.text() : '';
+                  check = r.ok && !/Page not found/i.test(html) ? `OK ${r.status}` : `FAIL ${r.status}`;
+                } catch (e) {
+                  check = `FAIL ${e.message}`;
+                }
+              }
+              rows.push({
                 name: l.name,
-                provider: l.provider,
                 pricingType: l.pricingType,
                 amount: l.amount,
                 currency: l.currency,
                 isActive: l.isActive,
-                paymentLinkUrl: l.paymentLinkUrl,
-              }))
-            );
+                payUrl,
+                check,
+              });
+            }
+            printTable(rows);
+          }
         } else {
           throw new Error('usage: products <list|get|links> ...');
         }

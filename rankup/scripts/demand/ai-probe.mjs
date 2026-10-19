@@ -18,10 +18,10 @@
  *     --reps 3 --out <输出目录> --fetch-google
  *   # 已有 Google 前 10：--google-top "a.com,b.com,c.com,..."（按名次），或 --google-serp-file serp.json
  *   # 只看会发什么、不花额度：加 --dry-run
- *   # 网页版 ChatGPT（用户已登录的 chatgpt.com；账号记忆会污染结果，见「通道」）：
+ *   # 网页版 ChatGPT（用户已登录的 chatgpt.com；默认临时聊天独立于账号记忆，见「通道」）：
  *   #   node scripts/demand/ai-probe.mjs --topic "<目标关键词>" --need-prompt "..." --out <目录> \
  *   #     --channel chatgpt-web --reps 1 --no-followup            # 未确认记忆状态：输出顶部标「未确认无记忆污染，仅供参考」
- *   #   ……再加 --memory-clean                                    # 仅当用户确认该账号已关记忆/是干净账号
+ *   #   ……再加 --memory-clean                                    # 用户确认临时页隔离；旧普通路径须确认账号干净
  *
  * 参数：
  *   --topic <词>            必填。目标关键词（也用于 Google SERP 抓取与输出命名）。
@@ -45,7 +45,7 @@
  *   --temporary             chatgpt-web 默认开启：dedicated 临时页发送，DOM 读取回答与来源；--no-temporary 用旧路径。
  *   --kinds <N,K,C>         仅执行指定类型，默认 N,K,C；单措辞采样可用 --kinds N，避免 reps 翻倍。
  *   --followup-prompt <文本> C 型完整提问，替代 Google 前三模板。
- *   --memory-clean          仅 chatgpt-web：**用户已确认**该账号关闭了记忆/是干净账号才传。不传则记 memoryClean=unknown，
+ *   --memory-clean          仅 chatgpt-web：**用户已确认**临时页隔离（旧普通路径须确认账号干净）才传。不传则记 memoryClean=unknown，
  *                           summary.json / summary.md / 每条 raw 顶部都标「未确认无记忆污染，仅供参考」。脚本不会替你改账号设置。
  *   --followup / --no-followup  是否做 C 型追问（默认做 1 次）。
  *   --effort <low|medium>   codex 通道推理强度，默认 low。
@@ -72,7 +72,7 @@
  *                ≠ 网页版 ChatGPT 产品；只能说「Codex/GPT 侧联网推荐」。
  *   chatgpt-web  经 OpenCLI 驱动用户**已登录**的 chatgpt.com。需要用户先在 Chrome 里登录网页版；
  *                本脚本不登录、不输入任何凭据、不改账号设置、不点「不个性化」。
- *                默认临时页路径（2026-10-01）：每样本重新打开 ?temporary-chat=true，核对页面不使用记忆声明，
+ *                默认临时页路径（2026-10-11）：URL 含 temporary-chat=true 且页面有临时声明/横幅即放行，不依赖个性化菜单，
  *                经 browser type/click 发送、DOM 读完整答案与直接引用链接；未做 payload 核验。
  *                以下是 --no-temporary 旧路径的历史说明：账号开了全局记忆时普通聊天会读记忆
  *                （实测 memory_scope=global_enabled，一个「你记得我什么」的探测原样吐出了用户的居住地/职业/持仓等个人信息）。
@@ -679,7 +679,7 @@ async function main() {
   if (webChannel) {
     log('[提示] 临时路径核对页面不使用记忆声明，未做 payload 核验；旧普通对话路径仍可能读取账号记忆。');
     log(memoryFlag
-      ? '[警告] 已传 --memory-clean：视为用户已确认该账号关闭了记忆或是干净账号。脚本无法替你验证，只会用会话 payload 里的 memory_scope 做矛盾检查。'
+      ? '[警告] 已传 --memory-clean：临时路径仍须通过 URL 与页面临时声明/横幅闸门，不代表关闭账号记忆；旧普通路径按干净账号声明并检查 payload 矛盾。'
       : `[警告] 未传 --memory-clean：所有输出与摘要顶部会标「${MEMORY_UNCONFIRMED}」。要做正式采样，请用未开记忆的干净账号，用户确认后再传 --memory-clean。本脚本不会改账号设置，也不会去点「不个性化」。`);
     if (args['web-search']) log('[提示] --web-search 已弃用并被忽略：opencli 的开关在新版 chatgpt.com 上必失败；网页通道改为在提示词末尾写 “Use web search.”。');
   } else if (memoryFlag) log('[提示] --memory-clean 只对 chatgpt-web 通道有意义（codex 通道用空 CODEX_HOME，没有账号记忆），已忽略。');

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { runsDir } from './progress.mjs';
 import { assertSafeToSignal, isPidAlive, sameCwd, signalProcessTree, processCommand, collectDescendantPids, readPidPpidTable, readPidRecord, writePidRecord } from './pid.mjs';
-import { buildBrief, formatBriefHuman } from './brief.mjs';
+import { buildBrief, formatBriefHuman, redactEvidence, snapshotGit, inspectGit } from './brief.mjs';
 
 export const statePath = (id) => join(runsDir(), `${id}.json`);
 export function writeState(rec) {
@@ -34,6 +34,11 @@ export function resolveDetached(spec, cwd = process.cwd()) {
     if (records.some(r => r.runId === spec)) return spec;
     const matches = records.filter(r => r.name === spec || r.runId.startsWith(spec));
     if (matches.length === 1) return matches[0].runId;
+    if (matches.length > 1 && matches.every(r => r.name === spec && (r.model?.startsWith('grok-cli:') || r.model === 'gpt-6.1-sol'))) {
+      const active = matches.filter(r => detachedState(r) === 'running');
+      if (active.length === 1) return active[0].runId;
+      if (!active.length) return matches.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0].runId;
+    }
     if (matches.length > 1) throw new Error(`任务匹配不唯一 ${spec}；请用完整 runId。`);
     return spec;
   }
@@ -44,6 +49,8 @@ export function resolveDetached(spec, cwd = process.cwd()) {
 }
 
 export async function launchDetached(cli, args, { cwd, model, briefPath, name, reportPath, noWait = false }) {
+  const launcherParent = process.ppid;
+  const claudeTool = Boolean(process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT);
   mkdirSync(runsDir(), { recursive: true });
   const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-detach-${randomUUID().slice(0, 8)}`;
   const base = join(runsDir(), runId);
@@ -69,7 +76,6 @@ export async function launchDetached(cli, args, { cwd, model, briefPath, name, r
     child.once('message', msg => {
       clearTimeout(timer);
       if (!msg.ready) return reject(new Error(msg.error || 'detach 启动失败'));
-      child.disconnect();
       child.unref();
       resolve();
     });
@@ -83,8 +89,25 @@ export async function launchDetached(cli, args, { cwd, model, briefPath, name, r
     child.unref();
     throw err;
   }
+  if (noWait || !claudeTool) child.disconnect();
+  else {
+    const guard = setTimeout(() => {
+      if (process.ppid === 1 || process.ppid !== launcherParent) {
+        const warning = detachedLaunchWarning(runId);
+        process.stderr.write(`${warning}\n`);
+        if (child.connected) child.send({ launchDetached: true }, () => {
+          if (child.connected) child.disconnect();
+        });
+      } else if (child.connected) child.disconnect();
+    }, 1500);
+    guard.unref();
+  }
   if (noWait) console.log(`runId: ${runId}\nstatus: ${statePath(runId)}\nresult: ${rec.resultPath}\nlog: ${rec.logPath}`);
   return runId;
+}
+
+function detachedLaunchWarning(runId) {
+  return `[agent-fleet] runId: ${runId} 检测到脱离启动：命令里可能带了 &/nohup，完成不会通知、任务列表看不到；请另开一条 Bash 用 fleet wait ${runId} 且 run_in_background:true 挂上通知，不要杀掉重派。`;
 }
 
 function killGroup(pid, signal) {
@@ -125,6 +148,13 @@ export async function supervise(cli) {
   rec = { ...payload.rec, pid: process.pid, command: processCommand(process.pid) };
   const beat = () => { rec.heartbeatAt = new Date().toISOString(); writeState(rec); };
   beat();
+  process.on('message', msg => {
+    if (!msg.launchDetached || rec.launchDetached) return;
+    rec.launchDetached = true;
+    // 执行器输出由监督器串行写入，前插警告不会覆盖并发追加的日志。
+    writeFileSync(rec.logPath, `${detachedLaunchWarning(rec.runId)}\n${readFileSync(rec.logPath, 'utf8')}`);
+    beat();
+  });
   if (existsSync('/usr/bin/caffeinate')) {
     const caffeine = spawn('/usr/bin/caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore' });
     caffeine.on('error', err => console.error(`caffeinate: ${err.message}`));
@@ -135,14 +165,24 @@ export async function supervise(cli) {
     writePidRecord(rec.runId, { pid: rec.pid, command: rec.command, model: rec.model, cwd: rec.cwd,
       startedAt: rec.startedAt, logPath: rec.logPath, finished: false });
     child = spawn(process.execPath, [cli, ...payload.args], {
-      detached: true, stdio: ['ignore', 'inherit', 'pipe', 'ipc'],
+      detached: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: { ...process.env, FLEET_DETACHED_RUN_ID: rec.runId, FLEET_DETACHED_BATCH: payload.args[0] === 'run-many' ? '1' : '' },
     });
+    child.stdout.on('data', chunk => appendFileSync(rec.logPath, chunk));
     rec.stderr = '';
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', chunk => { rec.stderr += chunk.toString(); appendFileSync(rec.logPath, chunk); });
+    child.stderr.on('data', chunk => { const text = redactEvidence(chunk.toString()); rec.stderr += text; appendFileSync(rec.logPath, text); });
     child.on('message', msg => {
-      if (msg.brief) summary = msg.brief;
+      if (msg.brief) {
+        summary = msg.brief;
+        if (!Array.isArray(summary)) {
+          rec.model = summary.model ?? rec.model;
+        }
+      }
+      if (msg.grokMetadata || msg.codexMetadata) {
+        Object.assign(rec, msg.grokMetadata ?? msg.codexMetadata);
+        beat();
+      }
       if (msg.output !== undefined) output = msg.output;
       if (msg.resultText !== undefined) writeFileSync(rec.resultPath, msg.resultText);
     });
@@ -158,29 +198,37 @@ export async function supervise(cli) {
     const { code, signal } = await outcome;
     // 执行器退出也清掉它留下的进程组/子孙，终态不留下后台子任务。
     forceStop();
-    rec.brief = summary ?? buildBrief({ ok: false, error: `执行进程退出 ${code ?? signal}`,
+    rec.brief = summary ?? buildBrief({ ...failureFacts(rec), ok: false, progress: { phase: '执行进程结束', exitCode: code, signal }, error: `执行进程退出 ${code ?? signal}`,
       durationMs: Date.now() - Date.parse(rec.startedAt), resultPath: rec.resultPath, logPath: rec.logPath });
     rec.output = output;
     if (stopping) rec.brief = { ...rec.brief, ok: false, verdict: 'stopped', stopped: true };
     rec.verdict = Array.isArray(rec.brief) ? rec.brief.every(b => b.verdict === 'ok') ? 'ok' : 'fail' : rec.brief.verdict;
-    rec.exitCode = rec.verdict === 'ok' ? 0 : rec.brief.fatal402 ? 2 : 1;
+    rec.exitCode = rec.verdict === 'ok' ? 0 : 1;
     rec.status = stopping ? 'stopped' : rec.verdict === 'ok' ? 'done' : 'failed';
   } catch (err) {
     if (child?.pid) forceStop();
     rec.status = stopping ? 'stopped' : 'failed';
     rec.verdict = stopping ? 'stopped' : 'fail';
     rec.exitCode = 1;
-    rec.error = err.message;
-    console.error(err.message);
+    rec.error = redactEvidence(err.message);
+    rec.brief = buildBrief({ ...failureFacts(rec), ok: false, error: rec.error, progress: { phase: '监督进程' }, resultPath: rec.resultPath, logPath: rec.logPath });
+    console.error(rec.error);
   } finally {
     clearInterval(timer);
     clearTimeout(killTimer);
     rec.finishedAt = new Date().toISOString();
     if (!existsSync(rec.resultPath)) writeFileSync(rec.resultPath, rec.error ?? '任务被停止，未生成结果。\n');
+    if (!summary && rec.brief?.failureReport) writeFileSync(rec.resultPath, `${redactEvidence(readFileSync(rec.resultPath, 'utf8'))}\n\n## 失败事实\n${JSON.stringify(rec.brief.failureReport, null, 2)}\n`);
     beat();
     appendFileSync(rec.logPath, `[agent-fleet] done ${rec.status === 'done' ? 'ok' : 'error'}\n`);
     if (process.connected) process.disconnect();
   }
+}
+
+function failureFacts(rec) {
+  return { model: rec.model, tier: rec.brief?.failureReport?.tier ?? rec.model, stderr: rec.stderr,
+    resultPath: rec.resultPath, logPath: rec.logPath,
+    ...inspectGit(rec.cwd, snapshotGit(rec.cwd)) };
 }
 
 export async function waitDetached(spec, { cwd, timeout, originalOutput = false } = {}) {
@@ -191,12 +239,16 @@ export async function waitDetached(spec, { cwd, timeout, originalOutput = false 
     if (!rec) throw new Error(`找不到 detach 任务 ${id}`);
     const state = detachedState(rec);
     if (state !== 'running') {
-      const brief = state === 'abnormal' ? buildBrief({ ok: false,
+      const brief = state === 'abnormal' ? buildBrief({ ...failureFacts(rec), ok: false,
         error: `异常终止；最后心跳 ${rec.heartbeatAt}`, resultPath: rec.resultPath, logPath: rec.logPath })
-        : rec.brief ?? buildBrief({ ok: false, stopped: state === 'stopped', error: rec.error,
+        : rec.brief ?? buildBrief({ ...failureFacts(rec), ok: false, stopped: state === 'stopped', error: rec.error,
           resultPath: rec.resultPath, logPath: rec.logPath });
       if (originalOutput && rec.stderr) process.stderr.write(rec.stderr);
       process.stdout.write(originalOutput && rec.output !== undefined && !['abnormal', 'stopped'].includes(state) ? rec.output : Array.isArray(brief) ? brief.map((b, i) => `--- task ${i + 1} ${b.model ?? ''} ---\n${formatBriefHuman(b)}`).join('\n') : formatBriefHuman(brief));
+      if ((!originalOutput || rec.output === undefined || ['abnormal', 'stopped'].includes(state)) && brief.costSource) process.stdout.write(`费用来源：${brief.costSource}\n`);
+      if ((!originalOutput || rec.output === undefined || ['abnormal', 'stopped'].includes(state)) && rec.model === 'gpt-6.1-sol') {
+        process.stdout.write(`Codex：steer ${brief.steerCount ?? rec.steerCount ?? 0} 次，resume ${brief.resumeCount ?? rec.resumeCount ?? 0} 次，降级 ${(brief.fallbacks ?? rec.fallbacks)?.length ?? 0} 次\n`);
+      }
       return (Array.isArray(brief) ? brief.every(b => b.verdict === 'ok') : brief.verdict === 'ok') ? 0 : rec.exitCode || 1;
     }
     if (timeout !== undefined && Date.now() - started >= Number(timeout) * 1000) throw new Error(`等待 ${id} 超时；任务继续运行。`);
@@ -224,9 +276,10 @@ export async function stopDetached(rec) {
     killGroup(rec.childPid, 'SIGKILL');
     rec.status = 'stopped'; rec.verdict = 'stopped'; rec.exitCode = 1;
     rec.finishedAt = new Date().toISOString();
-    rec.brief = buildBrief({ ok: false, stopped: true, error: '监督进程异常退出后停止执行器',
+    rec.brief = buildBrief({ ...failureFacts(rec), ok: false, stopped: true, error: '监督进程异常退出后停止执行器',
       resultPath: rec.resultPath, logPath: rec.logPath, durationMs: Date.now() - Date.parse(rec.startedAt) });
-    if (!existsSync(rec.resultPath)) writeFileSync(rec.resultPath, '监督进程异常退出后停止任务，未生成结果。\n');
+    const body = existsSync(rec.resultPath) ? readFileSync(rec.resultPath, 'utf8') : '监督进程异常退出后停止任务，未生成结果。\n';
+    writeFileSync(rec.resultPath, `${redactEvidence(body)}\n\n## 失败事实\n${JSON.stringify(rec.brief.failureReport, null, 2)}\n`);
     writeState(rec);
     appendFileSync(rec.logPath, '[agent-fleet] done error stopped\n');
     return { runId: rec.runId, signaled: true, exited: !isPidAlive(rec.childPid) };

@@ -79,7 +79,7 @@ ls .rankup/research/ 2>/dev/null | grep -i "<词根>"     # 同词根有旧报�
 node <已安装的gefei目录>/scripts/webcafe.mjs tools
 node <已安装的gefei目录>/scripts/webcafe.mjs me
 
-# ② 有哪些钥匙（决定哪些脚本今天能跑）
+# ② 有哪些钥匙（决定哪些凭据型脚本能跑；公开 SERP 不依赖 key，见 seo-serp.md「SERP 取数路线」）
 cut -d= -f1 $RANKUP/.env 2>/dev/null; env | grep -oE 'SERPER_API_KEY|GITHUB_TOKEN|GH_TOKEN|PRODUCTHUNT_TOKEN|REDDIT_CLIENT_ID|IGDB_CLIENT_ID|TABAPI_KEY'
 
 # ③ 面板节点（只在这一轮确实要用 Semrush/Similarweb 时才跑，它自己不耗配额）
@@ -93,7 +93,7 @@ node $BACKLINK/scripts/tools-share-node.mjs list --tool similarweb
 
 | 缺的钥匙 | 谁受影响 | 换成什么 |
 |---|---|---|
-| `SERPER_API_KEY` | 旧 `demand/serp-query.mjs` 不可用 | 加载官方 `gefei-keywords` 并调用 `serp`；盘面仍须人眼实勘 |
+| `SERPER_API_KEY` | 仅可选兜底 `demand/serp-query.mjs` 不可用 | 按 [SERP 取数路线](../seo-serp.md#serp-取数路线)继续浏览器采集 |
 | `GITHUB_TOKEN` | `github-skill-search --mode code/recent` 不可用 | `--mode repo`（无 token 可跑）；`github-trending --source trending` 不受影响 |
 | `PRODUCTHUNT_TOKEN` | 无 | `boards.mjs producthunt` 自动降级浏览器路径，**浏览器路径本来就更全** |
 | `REDDIT_CLIENT_ID` | `reddit-wishes` 没有 score | 自动降级 RSS，能跑但慢（`--delay` 别低于 6000）；本机 Chrome 登录了 Reddit 时 auto 链会先走 opencli，全字段 |

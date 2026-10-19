@@ -1,5 +1,9 @@
 # Playbook · 全站体检与轻量定位
 
+review/check 均按[建设中红线](../discipline.md#二十一禁止建设中内容与功能区域)检查：本轮重扫渲染文案与公开附属文件，逐入口核实现，回读已有设计稿与说明；缺项记失败。
+
+**每次 review 必查 [Cloudflare 循环消耗红线](../cloudflare-stack.md#89-循环消耗与账单熔断红线)**（判据复用 `checklists.md` 段 3 同名项）；开始大规模爬取或性能采样前先读触发配置与短窗口用量，发现异常先隔离链路。代码或控制面不可读则记未核验，不用首页 200 或账单未到账代替通过。
+
 预制流水线。用户说一句话，照着这里从头跑到尾，中途不问、不选、不猜。
 
 **本文所有命令里的占位符**：`<rankup>` = 本 Skill 目录（`SKILL.md` 所在目录）、
@@ -94,7 +98,7 @@ a–c 必然全空，而 d 档的 `git remote -v` 会拿当前仓库的名字拼
 | 0.2 站在不在线 | 串行 | `curl -sIL -A 'Mozilla/5.0' <site> \| grep -v 'Connection established' \| grep -iE '^(HTTP/\|location:)'` | 首页状态码 + 跳转链（阶段 3 闸门要的那条） | 连不上 / DNS 没解析 → 走下方「站还没上线分支」。**必须滤掉 `Connection established`**，否则走代理时零跳首页会被读成两跳（见阶段 0.0 末尾） |
 | 0.3 有没有 sitemap | 串行 | `curl -s <site>/sitemap.xml \| head -20`；再 `curl -s <site>/robots.txt` | `<sitemap>` 的真实地址；robots 有没有误挡 | 404 → A 组改成「逐个已知页面」模式：`seo-audit.mjs <url1> <url2> …`，并把「缺 sitemap」记成必修项 |
 | 0.4 开放 API 预算 | 串行 | `node <已安装的gefei目录>/scripts/webcafe.mjs tools`、`… me` | 工具目录的实时价格与可用积分，按本轮调用数写预算表 | `me` 401 是令牌无效，402 是余额不足，429 是当日上限；不当成数据为零，其余零积分检查继续 |
-| 0.5 性能取数路子 | 串行 | `node <rankup>/scripts/pagespeed.mjs plan <首页> --strategy both` | B 组要开的 pagespeed.web.dev 链接 + 读数清单 | **不再需要任何 key**（2026-08-31 起走网页版，零配额）。网页版跑分只在 Chrome 标签页真的可见时才渲染得完（实测后台标签页一直停在「Running analysis」，伪造 visibilityState 无效）。`collect` 默认前台驱动（open 带 `--window foreground` + 后台 activate 循环），2026-09-12 实测无人值守可以直接跑，B 组照跑；仍卡 `tab-hidden` 才标 ⏸ 并写「需要用户本人打开这几个链接读数，或加 `--no-foreground` 人工看着跑」，**不要把跑不出来记成「性能没问题」** |
+| 0.5 性能取数路子 | 串行 | `node <rankup>/scripts/pagespeed.mjs plan <首页> --strategy both` | B 组要开的 pagespeed.web.dev 链接 + 读数清单 | **不再需要任何 key**（2026-08-31 起走网页版，零配额）。网页版跑分只在 Chrome 标签页真的可见时才渲染得完（实测后台标签页一直停在「Running analysis」，伪造 visibilityState 无效）。`collect` 默认 dedicated 专用窗口（扩展把会话标签设为该窗口活动标签；2026-10-04 brief 提供的本机实测已出分），B 组照跑；仍卡 `tab-hidden` 才标 ⏸ 并写「检查专用窗口标签可见性，或按 plan 链接手动读数」，**不要把跑不出来记成「性能没问题」** |
 | 0.6 登录态 | 串行 | `opencli doctor` | A6 与 D/E/F 组里走浏览器的那几条能不能用 | 红 → 这几条标 ⏸ 并写清卡在哪；其余组照跑，**不要因此取消整场体检** |
 | 0.7 输出侧能不能读数 | 串行，零配额 | 先看 `.rankup/integrations.md` 的 GSC/Bing/百度行是什么状态；状态不是 ✅ 就直接查验证痕迹：<br>`curl -s "https://dns.google/resolve?name=<domain>&type=TXT"`（DoH，**不要用本机解析**，代理会返回 fake-IP 把"有没有 TXT"查错） | 「这一轮的优先级排序有没有基准」这个前提。收录页数与展光是**输出侧**指标，规范分/性能分/KD 全是**输入侧**——输出侧读不到数时，输入侧分数排出来的优先级是盲投 | 查不到验证记录 → **判死并当场写进 `audit.md` 的 P-1 前置项**（不是留成 ⏸ 待办）。<br>**读不到输出侧数据之前，不许给出 P0/P1 技术修复的优先级排序**——把「接入」排在技术修复之前，`decisions.md` 里写明这条改判的依据 |
 
@@ -164,7 +168,7 @@ E 组依赖 A/B/D 的事实，先完成这些取数再综合判读。开放 API 
 | 阶段 | 并行/串行 | 跑什么 | 拿到什么 | 卡住了怎么办 |
 |---|---|---|---|---|
 | B1 出清单 | 串行 | `node <rankup>/scripts/pagespeed.mjs plan <首页> <一个工具/功能页> <一个内容页> --strategy both` | 六个 pagespeed.web.dev 链接（三类页面 × 两端）+ 逐项读数清单 + `baseline.md` 的表格列 | 零依赖、零配额，不会失败 |
-| B2 取数 | 串行 | 两条路，按阶段 0.5 的判断选：<br>**脚本采**（默认）——`node <rankup>/scripts/pagespeed.mjs collect <同样几个 URL> --strategy both --budget 300`，前台驱动 + activate 循环无人值守跑通，报告出分后直接抠完整 Lighthouse LHR JSON（2026-09-12 起默认行为，不再靠人肉点开「展开视图」），每个 (URL × 端) 落 `lhr.json` + `summary.json` + `summary.md`（`--strategy both` 另有 `<url>.combined-summary.md` 两端并排对照）+ 截图/页面文本双证人，进 `.rankup/evidence/pagespeed-<ts>/`，判读仍由 AI 做；<br>**人跑**（兜底，只在下面这条真出现时才退回）——仍卡 `tab-hidden` 时按 B1 的链接逐个在浏览器里打开，页面自己跑完再读，或给 `collect` 加 `--no-foreground` | 每页：现场 CWV + LCP/INP/CLS + **样本量档位** + **作用域（本 URL 还是整个源）**；实验室四项分数 + 指标区 + 跑分环境；`summary.md` 里逐条 opportunity/diagnostic 的 `details.items`/`subItems` 逐文件明细 | `collect` 报 `tab-hidden` = **标签页没在前台，不是这个站没有数据**——已自动 close 重开重试过，仍不行先查 Chrome 是不是被别的 App 抢了前台，或退回人跑。报 `budget-exhausted` = 慢站还没跑完（实测有站跑满 240 秒仍在跑），加大 `--budget`，**超时同样不等于没有数据**。页面上**现场那一整块不存在 = CrUX 流量不足**，原样抄「现场无数据（流量不足）」进 `baseline.md`——不是 0、不等于通过，留空会在下一轮被读成「查过了没问题」 |
+| B2 取数 | 串行 | 两条路，按阶段 0.5 的判断选：<br>**脚本采**（默认）——`node <rankup>/scripts/pagespeed.mjs collect <同样几个 URL> --strategy both --budget 300`，默认 dedicated 专用窗口采数，报告出分后直接抠完整 Lighthouse LHR JSON（2026-09-12 起默认行为，不再靠人肉点开「展开视图」），每个 (URL × 端) 落 `lhr.json` + `summary.json` + `summary.md`（`--strategy both` 另有 `<url>.combined-summary.md` 两端并排对照）+ 截图/页面文本双证人，进 `.rankup/evidence/pagespeed-<ts>/`，判读仍由 AI 做；<br>**人跑**（兜底，只在下面这条真出现时才退回）——仍卡 `tab-hidden` 时按 B1 的链接逐个在浏览器里打开，页面自己跑完再读，`--no-foreground` 等同默认；仅用户明确要求看着时可加 `--foreground`（会抢用户前台窗口） | 每页：现场 CWV + LCP/INP/CLS + **样本量档位** + **作用域（本 URL 还是整个源）**；实验室四项分数 + 指标区 + 跑分环境；`summary.md` 里逐条 opportunity/diagnostic 的 `details.items`/`subItems` 逐文件明细 | `collect` 报 `tab-hidden` = **标签页不可见，不是这个站没有数据**——已自动 close 重开重试过，仍不行先查专用窗口的会话标签是否可见，或退回人跑。报 `budget-exhausted` = 慢站还没跑完（实测有站跑满 240 秒仍在跑），加大 `--budget`，**超时同样不等于没有数据**。页面上**现场那一整块不存在 = CrUX 流量不足**，原样抄「现场无数据（流量不足）」进 `baseline.md`——不是 0、不等于通过，留空会在下一轮被读成「查过了没问题」 |
 | B3 逐条必修 | 串行 | 读 B2 页面里的 Opportunities / Diagnostics 两个区块，**先看「第三方分解 / 网络依赖树」再看「渲染阻塞资源」**——字节量问题（尤其是 Web 字体总字节）在本地 Lighthouse 下常不显形，只认 PSI 网页版读数；LCP 慢而无明显阻塞资源时按 [`seo-box.md`](../seo-box.md) 一的 Lantern 优先级模型排查 VeryHigh/High 子资源、入场动画、文档 brotli 体积三项 | 一份逐条清单：每条要么修掉重跑证明消失，要么写明改不动的原因（第三方脚本、平台限制等），登记进 `checks.md` 标 ⏸ | **B 组输出的 opportunity/diagnostic 清单全部进必修列表，与 A6 同等**——分数够了不等于清单可以不看；PSI 双峰怀疑是平台抖动时必须拉一个同时段对照站陪测才能下结论 |
 
 **C 组 · GEO / AI 就绪度**
@@ -221,6 +225,7 @@ E 组依赖 A/B/D 的事实，先完成这些取数再综合判读。开放 API 
 | G2 后台类接入 | 并行 | `node <rankup>/scripts/webmaster-sitemap.mjs gsc status`、`… bing status`、`node <rankup>/scripts/cf-analytics-setup.mjs status <domain>` | GSC/Bing 验证与 sitemap 状态、CF Analytics beacon | 拿不到 GSC → 走下方「拿不到 GSC 分支」 |
 | G3 会话挖掘 | 串行 | `node <rankup>/scripts/sessions.mjs --project-root . --days 14 --new-only` → `--dump` → 消化完才 `--mark` | 还留在对话里、从没进过 `.rankup/` 的结论 | `--mark` 必须等信号真的提取完；中途失败或输出被截断就**不要落水位线**，宁可重读不可漏读 |
 | G4 三方对账 | 串行 | `git log --oneline -25`、真实路由/页面清单、线上 `sitemap.xml` 全量 `<loc>`，三者与 `.rankup/plan.md` 比对 | 记忆与代码的差 | 勾选框是滞后指标；读到「未开始」先去代码里验证再回写 |
+| G6 循环与费用止损 | 串行 | 主线按 [§8.9](../cloudflare-stack.md#89-循环消耗与账单熔断红线) 追 DO alarm、Cron、队列/Workflow、通知、回调及轮询的完整关系；核对实际环境预算与现存任务，跑有界故障测试及小额度真实熔断 | 段 3「Cloudflare 循环消耗红线」本轮证据、停机步骤与操作上界 | 无后台触发有据可查才写 N/A；缺权限写未核验；发现无界付费链路先停该链路，其他只读 review 继续，不在生产复现无限循环 |
 | G5 登记表 | 并行 | `node <rankup>/scripts/registry.mjs scan --roots <存放项目的目录>` | 跨项目可复用脚本名单 | 没配 roots 时读 `RANKUP_PROJECT_ROOTS` 或 `~/.rankup/config.json` |
 
 #### 阶段 2 · 汇总、判读、回写（串行，主线做）

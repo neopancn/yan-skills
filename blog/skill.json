@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "name": "blog",
+  "version": "0.1.0",
+  "releasedAt": "2026-10-11T00:00:00Z",
+  "source": "yan-labs/yan-skills",
+  "manifestUrl": "https://raw.githubusercontent.com/yan-labs/yan-skills/main/blog/skill.json"
+}

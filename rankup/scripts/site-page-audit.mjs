@@ -19,6 +19,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { scanDocument } from "./no-wip-check.mjs";
 
 const argv = process.argv.slice(2);
 let sitemap = null, out = "./site-page-audit-out", extra = [], urls = [];
@@ -27,7 +28,7 @@ for (let i = 0; i < argv.length; i++) {
   if (a === "--sitemap") sitemap = argv[++i];
   else if (a === "--out") out = argv[++i];
   else if (a === "--extra") extra = argv[++i].split(",").filter(Boolean);
-  else if (a === "-h" || a === "--help") { console.log("用法见文件头注释"); process.exit(0); }
+  else if (a === "-h" || a === "--help") { console.log("用法见文件头注释；建设中命中退出 1 并打印 URL/行/位置。\n本地构建期与自测：node scripts/no-wip-check.mjs --help（可单文件拷贝）。"); process.exit(0); }
   else urls.push(a);
 }
 if (!sitemap && !urls.length) { console.error("需要 --sitemap <url> 或 URL 列表"); process.exit(1); }
@@ -87,9 +88,9 @@ const tagsOf = (html, name) => html.match(new RegExp(`<${name}\\b[^>]*>`, "gi"))
 
 const PLACEHOLDER = [
   ["PH_LINK_HASH", /href\s*=\s*["']#["']/gi], ["PH_LINK_VOID", /href\s*=\s*["']javascript:void\(0?\)?["']/gi],
-  ["PH_LINK_EXAMPLE", /href\s*=\s*["'][^"']*example\.(com|org|net)[^"']*["']/gi], ["PH_LINK_COMING_SOON", /<a\b[^>]*>\s*coming soon\s*<\/a>/gi],
-  ["PH_TEXT_LOREM", /lorem ipsum/gi], ["PH_TEXT_TODO", /\b(TODO|TBD|FIXME)\b/g], ["PH_TEXT_YOUR_TEXT", /your text here/gi],
-  ["PH_TEXT_BRACKET", /\[(Company|Company Name|Product|Product Name|Your Name|Address)\]/gi], ["PH_TEXT_COMING_SOON", /\bcoming soon\b/gi],
+  ["PH_LINK_EXAMPLE", /href\s*=\s*["'][^"']*example\.(com|org|net)[^"']*["']/gi], 
+  ["PH_TEXT_LOREM", /lorem ipsum/gi], ["PH_TEXT_FIXME", /\bFIXME\b/gi],  ["PH_TEXT_YOUR_TEXT", /your text here/gi],
+  ["PH_TEXT_BRACKET", /\[(Company|Company Name|Product|Product Name|Your Name|Address)\]/gi], 
   ["PH_TEXT_TEMPLATE_VAR", /\{\{\s*[\w.]+\s*\}\}/g], ["PH_IMAGE_SERVICE", /(placehold\.co|via\.placeholder\.com|picsum\.photos|dummyimage\.com)/gi],
   ["PH_IMAGE_FILENAME", /src\s*=\s*["'][^"']*placeholder[^"']*\.(png|jpg|jpeg|svg|webp)["']/gi], ["PH_IMAGE_EMPTY_SRC", /<img\b[^>]*\bsrc\s*=\s*["']["'][^>]*>/gi],
   ["PH_CONTACT_EMAIL", /your@email\.com/gi], ["PH_CONTACT_PHONE", /\+1\s*234[\s.-]*567/g], ["PH_ASSET_LOCALHOST", /https?:\/\/(localhost|127\.0\.0\.1)[:/]/gi],
@@ -106,9 +107,16 @@ function flattenLd(node, acc) {
 
 async function main() {
   let origin;
+  const noWipFailures = [];
+  const checkNoWip = (source, url, format = 'html') => {
+    const hits = scanDocument(source, { format });
+    if (hits.length) noWipFailures.push({ url, hits });
+    return hits;
+  };
   if (sitemap) {
     const r = await get(sitemap);
     if (r.status !== 200) { console.error("sitemap 抓取失败", r.status, r.error); process.exit(1); }
+    checkNoWip(r.buf.toString(), sitemap, "xml");
     urls = [...r.buf.toString().matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => dec(m[1]));
   }
   origin = new URL(urls[0]).origin;
@@ -124,6 +132,7 @@ async function main() {
     const r = await get(u);
     const html = r.buf.toString("utf8");
     const p = { url: u, status: r.status, finalUrl: r.url, ctype: r.ctype, bytes: r.buf.length, fetchError: r.error || null };
+    p.noWip = checkNoWip(html, u, /text\/plain/i.test(r.ctype || "") ? "text" : /xml/i.test(r.ctype || "") ? "xml" : "html");
     if (r.status !== 200) { pages.push(p); continue; }
     const head = html.slice(0, html.indexOf("</head>") > 0 ? html.indexOf("</head>") : 20000);
     p.title = dec((head.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [, null])[1] || "") || null;
@@ -149,7 +158,7 @@ async function main() {
 
     // placeholders
     p.placeholders = {};
-    for (const [code, re] of PLACEHOLDER) { const m = html.match(re); if (m) p.placeholders[code] = m.slice(0, 3); }
+    for (const [code, re] of PLACEHOLDER) { const m = (code === "PH_TEXT_FIXME" ? html.replace(/<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]*>/g, " ") : html).match(re); if (m) p.placeholders[code] = m.slice(0, 3); }
     // images
     const imgs = tagsOf(html, "img");
     p.images = imgs.map((t) => ({ src: attr(t, "src"), srcset: attr(t, "srcset"), alt: attr(t, "alt"), w: attr(t, "width"), h: attr(t, "height"), loading: attr(t, "loading") }));
@@ -164,6 +173,8 @@ async function main() {
     for (const a of anchors) { const h = abs(a.href, u); if (h && new URL(h).origin === origin && !/^(mailto|tel):/.test(a.href)) addAsset(h.split("#")[0], "link", u); }
     p.externalLinks = anchors.filter((a) => a.href && /^https?:/.test(a.href) && new URL(a.href).origin !== origin).map((a) => a.href);
     p.mailto = anchors.filter((a) => /^mailto:/.test(a.href || "")).map((a) => a.href);
+    // Public feed text is covered even when absent from sitemap.
+    for (const l of links) if (/alternate/i.test(attr(l, "rel") || "") && /(?:rss|atom)/i.test(attr(l, "type") || "")) addAsset(abs(attr(l, "href"), u), "feed", u);
     // head assets
     for (const k of ["og:image", "og:image:secure_url"]) for (const v of og[k] || []) addAsset(abs(v, u), "og:image", u);
     for (const v of tw["twitter:image"] || []) addAsset(abs(v, u), "twitter:image", u);
@@ -208,6 +219,7 @@ async function main() {
       if (r.status === 200 && (meta.kinds.has("img") || meta.kinds.has("og:image") || meta.kinds.has("twitter:image") || meta.kinds.has("icon") || meta.kinds.has("source") || meta.kinds.has("jsonld:image"))) info.image = imgSize(r.buf, r.ctype, u);
       if (r.status === 200 && meta.kinds.has("link")) info.isHtml = /text\/html/.test(r.ctype);
       if (meta.kinds.has("manifest") && r.status === 200) { try { const mj = JSON.parse(r.buf.toString()); info.manifest = mj; for (const ic of mj.icons || []) { const iu = abs(ic.src, u); if (iu && !results[iu] && !assets.has(iu)) { const ir = await get(iu); results[iu] = { status: ir.status, ctype: ir.ctype, bytes: ir.buf.length, kinds: ["manifest-icon"], declared: `${ic.sizes} ${ic.type || ""}`, image: ir.status === 200 ? imgSize(ir.buf, ir.ctype, iu) : undefined }; } } } catch (e) { info.manifestParseError = String(e.message); } }
+      if (meta.kinds.has("feed")) info.noWip = checkNoWip(r.buf.toString(), u, "xml");
       results[u] = info;
     }
   }));
@@ -217,10 +229,11 @@ async function main() {
   for (const p of ["/robots.txt", "/sitemap.xml", "/llms.txt", "/favicon.ico", "/apple-touch-icon.png", "/.well-known/security.txt", "/__audit-404-probe-" + Date.now().toString(36)]) {
     const r = await get(origin + p, { manual: true });
     site[p] = { status: r.status, ctype: r.ctype, bytes: r.buf.length, location: r.headers?.location, cache: r.headers?.["cf-cache-status"], cacheControl: r.headers?.["cache-control"] };
+    if (p === "/llms.txt" || p === "/sitemap.xml" || p.startsWith("/__audit-404")) site[p].noWip = checkNoWip(r.buf.toString(), origin + p, p === "/llms.txt" ? "text" : p === "/sitemap.xml" ? "xml" : "html");
     if (p.startsWith("/__audit-404")) { const h = r.buf.toString(); site[p].title = (h.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [, null])[1]; site[p].robots = (h.match(/<meta[^>]*name="robots"[^>]*>/i) || [null])[0]; site[p].h1 = (h.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [, null])[1]?.replace(/<[^>]+>/g, " "); }
   }
 
-  const report = { origin, generatedAt: new Date().toISOString(), pageCount: pages.length, dupes, pages, assets: results, site };
+  const report = { origin, generatedAt: new Date().toISOString(), pageCount: pages.length, dupes, pages, assets: results, site, noWipFailures };
   writeFileSync(join(out, "site-page-audit.json"), JSON.stringify(report, null, 1));
 
   // markdown summary
@@ -236,8 +249,13 @@ async function main() {
   for (const [u, r] of Object.entries(results)) if (r.status !== 200 || (r.kinds.includes("link") && r.isHtml === false) || r.error) L.push(`- ${r.status} ${u} (${r.kinds.join(",")}) from ${r.from?.join(", ")} ${r.error || ""}`);
   L.push("", "## 站点文件");
   for (const [p, s] of Object.entries(site)) L.push(`- ${p}: ${JSON.stringify(s)}`);
+  L.push("", "## 建设中红线");
+  for (const { url, hits } of noWipFailures) for (const hit of hits) L.push(`- ${url}:${hit.line} ${hit.location}: ${hit.term} — ${hit.excerpt}`);
+  if (!noWipFailures.length) L.push("词表命中 0；功能与设计仍需人工核验。");
   writeFileSync(join(out, "site-page-audit.md"), L.join("\n"));
   console.log(join(out, "site-page-audit.md"));
   console.log(`pages=${pages.length} assets=${Object.keys(results).length} nonOk=${Object.values(results).filter((r) => r.status !== 200).length}`);
+  for (const { url, hits } of noWipFailures) for (const hit of hits) console.error(`${url}:${hit.line} ${hit.location}: ${hit.term} — ${hit.excerpt}`);
+  if (noWipFailures.length) process.exitCode = 1;
 }
 main().catch((e) => { console.error(e); process.exit(2); });

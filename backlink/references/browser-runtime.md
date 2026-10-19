@@ -24,13 +24,7 @@ A session name owns exactly one tab, so **N pages need N session names**; never 
 session name (`opencli browser --help` opens with `work`, and everyone who copies it
 collides); never use `tab new` / `tab select` / `open --tab` to hold several pages under one
 name — all three fail **silently**; open every session you need up front before starting the
-work loop. **Background is the default and you should not override it**: it opens in the
-window the person is already using, never raises a window, and never switches the tab they
-are looking at. It is **not** headless — every headless tell reads negative, so there is no
-reason to reach for foreground. `--window foreground` *does* steal the active tab; use it
-only when the person has to finish something by hand (a CAPTCHA). `--window isolated` keeps
-automation in its own window. Requires the OpenCLI extension at 1.0.32 or newer — on older
-builds the default is foreground and every command needs `--window background` spelled out.
+work loop. **Dedicated is the default**: an unfocused automation window, placed on a secondary display when available. CLI, extension 1.5.x and the JS wrapper agree on this default. Explicit `--window` or `OPENCLI_WINDOW` can override it. `--window foreground` steals the active tab; use it only through an explicit option when the person has to finish something by hand (a CAPTCHA or login). Quota-report scripts retain their existing virtual-display strategy. Older extensions must be updated to obtain dedicated placement.
 
 If a read returns a page you did not navigate to, **suspect a session-name collision first**,
 the site or the CLI last.

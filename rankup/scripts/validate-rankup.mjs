@@ -16,7 +16,7 @@ import { lint as lintDocs } from "./maintain/doc-lint.mjs";
 const execFileAsync = promisify(execFile);
 
 const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const expectedVersion = "3.38.5";
+const expectedVersion = "3.38.7";
 const requiredReferences = [
   "integrations/kie.md",
   "integrations/kie-models.md",
@@ -128,6 +128,7 @@ const requiredContent = {
   "references/playbooks/research.md": ["## App 市场验证分支", "不能单独否决 App 市场"],
   // 2026-09-30 lifecycle.md 按七段拆分，原断言随内容迁到对应段文件，一条未删。
   "references/lifecycle/stage-3-build.md": [
+    "cloudflare-stack.md#89-循环消耗与账单熔断红线",
     "清除 React / Vite / TanStack 脚手架默认图标",
     "域名与索引开关共享构建期配置",
     "合法 JSON 不等于 Schema 语义合法",
@@ -135,6 +136,7 @@ const requiredContent = {
     "grid → row → gridcell",
   ],
   "references/lifecycle/stage-4-prelaunch.md": [
+    "Cloudflare 循环消耗红线未通过",
     "SSR HTML 与浏览器水合后 DOM",
     "逐个 GET 并解码实际图片",
     "Googlebot-Image",
@@ -142,6 +144,8 @@ const requiredContent = {
     "包含 sitemap 外页面",
   ],
   "references/checklists.md": [
+    "Cloudflare 循环消耗红线",
+    "共享预算副作用前原子预留",
     "D15 · 品牌图标当天做齐",
     "图标专项（上线前必过）",
     "正式域名图标回读",
@@ -180,7 +184,15 @@ const requiredContent = {
     "experience.md",
     "## 目录规范：常驻文件、保留什么、去哪里、多大",
   ],
+  "references/playbooks/site-review.md": [
+    "G6 循环与费用止损",
+  ],
   "references/cloudflare-stack.md": [
+    "## 8.9 循环消耗与账单熔断红线",
+    "应用重新 `setAlarm()`",
+    "预算告警不是消费硬顶",
+    "持久化计数",
+    "正常任务仍完成",
     "pnpm dlx shadcn@latest init --preset b1D0eCA4 --template start --monorepo --rtl --pointer",
     "npm i -g cf",
     "npx skills add yan-labs/yan-skills --skill cf-cli -g -y",
@@ -446,6 +458,7 @@ async function validate() {
         [3, "D15 · 品牌图标当天做齐"],
         [4, "图标专项（上线前必过）"],
         [5, "正式域名图标回读"],
+        [3, "Cloudflare 循环消耗红线"],
         [3, "D1 · `SITE_URL` 构建期注入客户端"],
         [3, "D4 · 分析脚本延迟加载", false],
         [3, "D12 · JSON-LD 注入方式与类型选择已定", false],
