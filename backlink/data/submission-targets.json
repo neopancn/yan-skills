@@ -30365,7 +30365,7 @@
       "priceCheckedAt": null,
       "status": "usable",
       "sourceList": "web.cafe bounty wlhmhdaoqg",
-      "notes": "AI hubs directory with optional premium submission",
+      "notes": "AI hubs directory with optional premium submission | 2026-10-19 observed: submit form requires >=1 category/tag but dataset empty after reload (site-side bug) - form deadlocked.",
       "lastProbedAt": "2026-08-22",
       "evidence": {
         "method": "browser-dom",
