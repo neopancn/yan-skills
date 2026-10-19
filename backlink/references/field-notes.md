@@ -345,6 +345,20 @@ verification trap is severe enough to invalidate a whole campaign report.
     authored inside the body `<a>`, so the Name field should stay a normal name.
     Putting the keyword in Name adds nothing the body link does not already
     carry, and it makes the comment self-identify as promotion.
+  - **Brand-defaulting is the failure mode that actually happens** (observed
+    2026-10-20, 10-comment batch): the skill's anchor-policy rule names
+    "brand, product, or naked URL", and an agent under submission pressure
+    resolves that to typing the brand name into every Name field — ten anchor
+    slots burned on a keyword that was already over-allocated. The fix is
+    operational, not a new vocabulary: the comment Name slot **consumes the
+    campaign's anchor rotation** like any other placement. Prefer
+    descriptive-partial and generic anchors here (they read naturally to a
+    moderator; "convert a Lovable site to WordPress" survives review, a bare
+    "html to wordpress" as a person's name invites the trash button), cap
+    exact-match at roughly one per ten comments, never repeat the same keyword
+    on the same site, and point the Website field at the landing page matching
+    that anchor's target — an anchor for a `/convert/lovable-to-wordpress`
+    page that lands on the homepage wastes the relevance it just bought.
 - **"Saved" is not "published": the duplicate signal proves storage, not a live
   comment.** Re-POSTing the identical payload and reading `409 Duplicate comment
   detected` proves the first POST was stored — it says nothing about whether the
