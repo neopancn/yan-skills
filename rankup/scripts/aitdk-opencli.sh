@@ -505,15 +505,25 @@ write_partial() {
     local robots_arg=() robots_jq='null' sitemap_arg=() sitemap_jq='null'
     if [[ "$ROBOTS_IS_RAW" -eq 1 ]]; then robots_arg=(--arg robotsTxt "$ROBOTS_TXT"); robots_jq='$robotsTxt'; fi
     if [[ "$SITEMAP_IS_RAW" -eq 1 ]]; then sitemap_arg=(--arg sitemapExcerpt "$SITEMAP_XML"); sitemap_jq='$sitemapExcerpt'; fi
+    # Large JSON blobs must go through temp files, not argv: Windows caps the
+    # whole command line at ~32k chars, and accumulated section payloads blow
+    # past it ("Argument list too long"). --slurpfile reads them from disk.
+    local tmpd; tmpd="$(mktemp -d "${TMPDIR:-/tmp}/aitdk-wp.XXXXXX")" || tmpd="/tmp/aitdk-wp.$$"
+    mkdir -p "$tmpd"
+    printf '%s' "$SEO_JSON"    > "$tmpd/seo.json"
+    printf '%s' "$WHOIS_JSON"  > "$tmpd/whois.json"
+    printf '%s' "$ISSUES_JSON" > "$tmpd/issues.json"
+    printf '%s' "$PANEL_JSON"  > "$tmpd/panel.json"
     jq -n \
       --arg url "$URL" --arg domain "$DOMAIN" --arg readAt "$READ_AT" \
-      --argjson seo "$SEO_JSON" \
+      --slurpfile seo "$tmpd/seo.json" \
       "${robots_arg[@]}" "${sitemap_arg[@]}" \
-      --argjson whois "$WHOIS_JSON" \
-      --argjson issues "$ISSUES_JSON" \
-      --argjson panel "$PANEL_JSON" \
-      "{ url: \$url, domain: \$domain, readAt: \$readAt, seo: \$seo, robotsTxt: ${robots_jq}, sitemapExcerpt: ${sitemap_jq}, whois: \$whois, issues: \$issues, aitdkPanel: \$panel }" \
+      --slurpfile whois "$tmpd/whois.json" \
+      --slurpfile issues "$tmpd/issues.json" \
+      --slurpfile panel "$tmpd/panel.json" \
+      "{ url: \$url, domain: \$domain, readAt: \$readAt, seo: \$seo[0], robotsTxt: ${robots_jq}, sitemapExcerpt: ${sitemap_jq}, whois: \$whois[0], issues: \$issues[0], aitdkPanel: \$panel[0] }" \
       > "$OUTFILE"
+    rm -rf "$tmpd"
   else
     # Manual fallback (Part B is always skipped when jq is missing, see above)
     json_escape() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\r'/}"; s="${s//$'\t'/\\t}"; printf '%s' "$s"; }
@@ -534,11 +544,16 @@ oc() { $OPENCLI_BIN browser "$SESSION" "$@"; }
 
 # Merge the current section map + errors into PANEL_JSON and rewrite the report.
 write_panel() {
+  # sections payload grows with every captured section; pass via temp file to
+  # stay under the Windows ~32k-char argv limit.
+  local tmpf; tmpf="$(mktemp "${TMPDIR:-/tmp}/aitdk-sec.XXXXXX.json")"
+  printf '%s' "$PANEL_SECTIONS_JSON" > "$tmpf"
   PANEL_JSON="$(jq -n \
-    --argjson sections "$PANEL_SECTIONS_JSON" \
+    --slurpfile sections "$tmpf" \
     --argjson errs "$(printf '%s\n' "${panel_errors[@]:-}" | jq -R 'select(length>0)' | jq -s .)" \
     --arg frame "${FRAME_IDX:-}" \
-    '{attempted:true, ok:($errs | length == 0), frameIndex:$frame, errors:$errs, sections:$sections}')"
+    '{attempted:true, ok:($errs | length == 0), frameIndex:$frame, errors:$errs, sections:$sections[0]}')"
+  rm -f "$tmpf"
   write_partial
 }
 

@@ -17,10 +17,10 @@ const { values: args } = parseArgs({ options: {
   domain: { type: 'string' }, prompt: { type: 'string', multiple: true },
   'prompts-file': { type: 'string' }, pitch: { type: 'string' }, 'pitch-file': { type: 'string' }, reps: { type: 'string', default: '3' },
   out: { type: 'string' }, round: { type: 'string', default: '0' },
-  'no-pitch': { type: 'boolean' }, recheck: { type: 'boolean' }, smoke: { type: 'boolean' }, help: { type: 'boolean' },
+  'no-pitch': { type: 'boolean' }, recheck: { type: 'boolean' }, smoke: { type: 'boolean' }, 'memory-clean': { type: 'boolean' }, help: { type: 'boolean' },
 } });
 if (args.help) {
-  console.log('geo-loop.mjs --domain <域名> --prompt <随口问法>（可重复）或 --prompts-file <每行一题> --reps 3 --out <仓库外目录> [--round 0] [--pitch <可核实卖点> | --pitch-file <路径>] [--recheck | --smoke] [--no-pitch：仅发送 A/B，不发送本站网址或品牌]');
+  console.log('geo-loop.mjs --domain <域名> --prompt <随口问法>（可重复）或 --prompts-file <每行一题> --reps 3 --out <仓库外目录> [--round 0] [--pitch <可核实卖点> | --pitch-file <路径>] [--recheck | --smoke] [--memory-clean 账号无记忆已由用户确认] [--no-pitch：仅发送 A/B，不发送本站网址或品牌]');
   process.exit(0);
 }
 const domain = regDomain(args.domain);
@@ -40,7 +40,7 @@ if (!pitch && !args.smoke && !args['no-pitch']) {
   const description = meta.match(/\bcontent=(["'])(.*?)\1/is)?.[2] || '';
   pitch = `${title}；${description}`;
 }
-const web = { session: defaultSession('geo-recommendation-loop'), opened: false, keepAlive: !args.smoke };
+const web = { session: defaultSession('geo-recommendation-loop'), opened: false, keepAlive: !args.smoke, memoryClean: !!args['memory-clean'] };
 manageSession(web);
 const data = { domain, url, round: Number(args.round), mode: args.smoke ? 'smoke' : args.recheck ? 'informed-recheck' : 'natural',
   pitch: pitch || '', pitchSource, startedAt: new Date().toISOString(), channel: 'chatgpt-web', privacy: '临时聊天 + 不个性化，由共享驱动逐样本核对；未做 payload 核验', samples: [], status: 'running' };

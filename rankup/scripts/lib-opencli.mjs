@@ -42,8 +42,14 @@ function derive(bin) {
 let _resolved;
 export function resolveOpencli(opts = {}) {
   const override = opts.bin || process.env.RANKUP_OPENCLI;
-  if (override) return derive(override);
-  if (_resolved) return _resolved;
+  const resolved = override ? derive(override) : _resolved ?? _resolveDefault();
+  // RANKUP_OPENCLI_ARGS：插在「入口（interpreter/入口 js）之后、opencli 子命令之前」，
+  // 如 `--profile <名>`；空格分词。给「登录态在别的 Chrome profile」的机器切换身份用。
+  const extraArgs = (process.env.RANKUP_OPENCLI_ARGS ?? "").split(/\s+/).filter(Boolean);
+  return { ...resolved, prefixArgs: [...resolved.prefixArgs, ...extraArgs] };
+}
+
+function _resolveDefault() {
   if (process.platform === "win32") {
     let shim = null;
     try {

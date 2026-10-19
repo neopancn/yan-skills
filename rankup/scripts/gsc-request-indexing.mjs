@@ -156,7 +156,7 @@
  * 触发参数校验或真的浏览器调用。离线测试：
  * `node --test tests/gsc-request-indexing.test.mjs`。
  */
-import { execSync } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs"
 import { realpath } from "node:fs/promises"
 import { dirname, resolve as resolvePath } from "node:path"
@@ -241,10 +241,14 @@ export function extractLocs(xml) {
  * 可以照常用，只有默认实现换了底层。
  */
 function curlFetch(url, { headers = {} } = {}) {
-  const headerArgs = Object.entries(headers).map(([k, v]) => `-H ${shq(`${k}: ${v}`)}`).join(" ")
+  // execFileSync 走参数数组、不经过 shell：win32 上 shq 的 cmd 双引号会把
+  // `-w "\n%{http_code}"` 的 % 展开吃掉（实测 "blank argument"），参数数组没有这层歧义。
+  const args = ["-sS", "-L", "--max-time", "20", "-w", "\n%{http_code}"]
+  for (const [k, v] of Object.entries(headers)) args.push("-H", `${k}: ${v}`)
+  args.push(url)
   let out
   try {
-    out = execSync(`curl -sS -L --max-time 20 -w ${shq("\n%{http_code}")} ${headerArgs} ${shq(url)}`, { encoding: "utf8" })
+    out = execFileSync("curl", args, { encoding: "utf8" })
   } catch (e) {
     const msg = (e.stderr?.toString() || e.message || "curl 失败").trim()
     return Promise.resolve({ ok: false, status: 0, text: async () => "", _error: msg })
@@ -322,8 +326,10 @@ export function saveState(path, state) {
 // 含完整搜索框交互与真实点击提交。其余为候选/兜底，命中即用，见文件头「已知限制」。
 const L = {
   requestButton: { zh: ["请求编入索引"], en: ["REQUEST INDEXING", "Request Indexing", "Request indexing"] },
-  indexed: { zh: ["网址在 Google 上"], en: ["URL is on Google", "This URL is on Google"] },
-  notIndexed: { zh: ["网址尚未收录到 Google", "网址不在 Google 上"], en: ["URL is not on Google", "This URL is not on Google"] },
+  // 2026-10-19 实测（zh-CN）：live 测试横幅文案已改为「网址已收录到 Google」，
+  // 旧「网址在 Google 上」不再出现；两种都保留。
+  indexed: { zh: ["网址已收录到 Google", "网址在 Google 上", "网址已编入索引"], en: ["URL is on Google", "This URL is on Google"] },
+  notIndexed: { zh: ["网址未收录到 Google", "网址尚未收录到 Google", "网址不在 Google 上", "网址尚未编入索引", "网址未编入索引"], en: ["URL is not on Google", "This URL is not on Google"] },
   requestedSuccess: { zh: ["已请求编入索引", "已将网址添加到优先抓取队列"], en: ["Indexing requested", "URL indexing requested"] },
   ownershipError: { zh: ["您没有此网址的所有权"], en: ["not verified as an owner", "no permission"] },
 }
