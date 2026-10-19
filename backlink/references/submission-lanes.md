@@ -25,17 +25,28 @@ Skill**'s domain, which owns the receiving side (Cloudflare Email Worker → D1 
 same inbox. This is the key that turns Lane B's account half into real work.
 
 1. Open the target's sign-up route in that row's **own** session.
-2. Register with a **per-target alias** on the mailbox domain — the shared form
+2. **Before typing an alias, look for one-click OAuth** — "Continue with
+   Google/GitHub/X" buttons on the login or sign-up page. A dedicated browser
+   profile often already carries a live session for at least one of those
+   providers, which finishes registration with a single Authorize click and no
+   mailbox round-trip at all. Real failure mode (2026-10-20): an agent skipped
+   an `account`-cohort target as "requires registration" while its login page
+   offered three one-click buttons and the profile held a valid GitHub session.
+   Skimming `accounts.json`/provider sessions costs seconds; skipping a
+   registrable target costs a listing. Only when no one-click path exists, fall
+   through to the alias flow below.
+3. Register with a **per-target alias** on the mailbox domain — the shared form
    is `<project>-<target>@<mailbox-domain>` — plus the profile's submitter name.
    Never one fixed address across targets (it fingerprints the batch), never
    invent a third-party address, and never reuse someone else's account. Keep
    the alias → target mapping in the accounts store, never in the ledger.
-3. Submit, then poll the mailbox filtered by the sender's domain — use `ts` to
+4. Submit, then poll the mailbox filtered by the sender's domain — use `ts` to
    tell new mail from old; there is no push, only polling.
-4. Open the activation link, or enter the OTP, **in the same session**, then
+5. Open the activation link, or enter the OTP, **in the same session**, then
    continue to the listing form.
-5. Record the account in the ledger row's evidence. Record **never** the
-   credentials, and never a token.
+6. Record the account in the ledger row's evidence (and note the OAuth provider
+   when one-click was used). Record **never** the credentials, and never a
+   token.
 
 Stop the row as before if the mailbox Skill is unavailable, or if finishing the
 sign-up still needs a CAPTCHA/Turnstile, a phone number, a company/personal
