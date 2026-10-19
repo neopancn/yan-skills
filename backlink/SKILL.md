@@ -85,11 +85,17 @@ node scripts/paid-platform-registry.mjs list --min-sites 2
 | 问题 | 用哪个 | 拿得到什么 |
 | --- | --- | --- |
 | 这个站多大、流量从哪来、还有哪些同类站 | **Similarweb** | 总访问量（含直接/推荐）、渠道构成、相似站、地理分布 |
-| 这个词多少量、多难、谁在排、它的外链长什么样 | **Semrush** | 分国家搜索量与 KD、关键词全库导出、自然排名、主要页面、引荐域名与反链 |
+| 这个词多少量、多难（有机竞争度）、CPC、谁在排 | **Similarweb Pro**（登录态只在 `msht4gxm` profile） | suggest / DeviceTraffic / SerpSnapshot 同源 JSON API，逐词 difficulty、量、意图、SERP 玩家；路由与端点全表见 `../gefei-similarweb-research/references/deep-link-url-map.md`，一键取数用其 `scripts/sw-keyword-probe.mjs` |
+| 它的外链长什么样、引荐域名与反链、关键词全库导出 | **Semrush**（或 Ahrefs） | Similarweb **没有反链索引**，外链维度只能走这里；需要分国家 KD 交叉验证时也在此 |
 
 **两边的「流量」口径不同，对不上很正常。** Semrush 域名概览给的是**自然搜索流量估算**，
 Similarweb 给的是**总访问量**。同一个站两边差三倍以上是常态，写结论时必须标明口径，
 否则会得出「竞品比想象中弱」这种错误判断。绝不放进同一列。
+
+**「难度」口径同理：** Similarweb 的 `difficulty`（有机竞争度）与 Semrush/Ahrefs 的 KD 是
+不同供应商的 0-100 标度，数值不可互换。KD→引荐域数量对照表（段 6 链接预算）按
+**Semrush/Ahrefs KD** 标定——用 SW difficulty 做选词没问题，但换算引用域预算时必须标注
+口径，或对排在最前的目标词用 Semrush/Ahrefs 交叉验证一次再定预算。
 </division>
 <panel-launch>
 Use `node scripts/tools-share-open.mjs --tool semrush` or `--tool similarweb`; reuse the same session for a task and check the landed route, target and quota. Semrush organic estimates and Similarweb total visits have different denominators. Panel launch, node quotas, and the Semrush overview criteria: <ref file="references/data-source-operations.md"/>. Tool account and source details: <ref file="references/authorized-data-sources.md"/>.
