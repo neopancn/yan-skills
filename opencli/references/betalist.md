@@ -490,5 +490,5 @@ opencli browser <session> javascript_tool 'document.cookie'
 ## 相关资源
 
 - [BetaList 主页](https://betalist.com)
-- [OpenCLI 浏览器自动化文档](./opencli-browser.md)
+- [OpenCLI 浏览器自动化文档](./browser-driving.md)
 - [Rails ActiveStorage DirectUpload](https://guides.rubyonrails.org/active_storage_overview.html#direct-uploads)

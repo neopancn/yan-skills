@@ -326,4 +326,4 @@ solveCapcha();
 ## 相关资源
 
 - [LaunchIgniter 主页](https://www.launchingnext.com)
-- [OpenCLI 浏览器自动化文档](./opencli-browser.md)
+- [OpenCLI 浏览器自动化文档](./browser-driving.md)

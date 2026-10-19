@@ -23,8 +23,10 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+// fileURLToPath 而非 URL.pathname：win32 上 pathname 是 "/C:/..."，resolve 会拼出 "C:\C:\..."。
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /**
  * 递归收集要检查的 Markdown。跳过 node_modules 与 .git 之类。
