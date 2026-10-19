@@ -86,7 +86,8 @@ node scripts/paid-platform-registry.mjs list --min-sites 2
 | --- | --- | --- |
 | 这个站多大、流量从哪来、还有哪些同类站 | **Similarweb** | 总访问量（含直接/推荐）、渠道构成、相似站、地理分布 |
 | 这个词多少量、多难（有机竞争度）、CPC、谁在排 | **Similarweb Pro**（登录态只在 `msht4gxm` profile） | suggest / DeviceTraffic / SerpSnapshot 同源 JSON API，逐词 difficulty、量、意图、SERP 玩家；路由与端点全表见 `../gefei-similarweb-research/references/deep-link-url-map.md`，一键取数用其 `scripts/sw-keyword-probe.mjs` |
-| 它的外链长什么样、引荐域名与反链、关键词全库导出 | **Semrush**（或 Ahrefs） | Similarweb **没有反链索引**，外链维度只能走这里；需要分国家 KD 交叉验证时也在此 |
+| 它的外链长什么样、引荐域名与反链 | **Similarweb Pro 优先，索引不够再上 Semrush/Ahrefs** | **SW Pro 有反链模块**（2026-10-20 实测 aha-music.com 出数）：overview（引荐域/反链数 + SW Domain authority + New vs lost）、逐域表（DA + dofollow/nofollow 页数 + 首见日期）、逐条反链（来源页 URL + **anchor 文本** + 目标 URL + domain score；过滤器 Active/New/Lost、Dofollow/Nofollow、**Broken backlinks**）。路由见 deep-link-url-map.md §6.1。**SW 反链索引覆盖率通常小于 Ahrefs/Semrush**（同一站两边差几倍是常态），小站/长尾站可能查不到——SW 查不到或要全量历史时再走 Semrush |
+| 分国家 KD 交叉验证、关键词全库导出 | **Semrush**（或 Ahrefs） | 需要与 SW difficulty 交叉验证、或要超大批量导出时在此 |
 
 **两边的「流量」口径不同，对不上很正常。** Semrush 域名概览给的是**自然搜索流量估算**，
 Similarweb 给的是**总访问量**。同一个站两边差三倍以上是常态，写结论时必须标明口径，
