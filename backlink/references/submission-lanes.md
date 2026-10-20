@@ -50,7 +50,11 @@ same inbox. This is the key that turns Lane B's account half into real work.
 
 Stop the row as before if the mailbox Skill is unavailable, or if finishing the
 sign-up still needs a CAPTCHA/Turnstile, a phone number, a company/personal
-address, or payment — those stay Lane B.
+address, or payment — those stay Lane B. One gate is not a stop, though: an
+**account-age requirement** ("your account must be N days old to post") expires
+on its own. Register, store the account with a retry note, and schedule the
+listing as follow-up work — abandoning the account converts a one-day wait into
+a permanent loss (see field-notes, "Account-age gates are scheduled follow-ups").
 
 ## Lane B needs one session per staged site
 
