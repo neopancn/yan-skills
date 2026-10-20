@@ -799,3 +799,89 @@ account with a retry note, and treat the listing as scheduled follow-up work —
 abandoning the account because today's button is locked turns a one-day wait
 into a permanent loss. Distinguish the gate that *expires* from the gate that
 *demands payment or a human*; only the second one is a real stop.
+
+## The outreach browser profile is a standing identity — treat it as the default lane
+
+The outreach default browser environment is the designated profile (currently
+`msht4gxm` in opencli, set via `opencli profile use msht4gxm`), which carries
+two aged Google accounts (Chloe Bowden / Derek Burns) with live sessions. An
+agent that opens a fresh blank session for every target throws that identity
+away — and then treats the Google OAuth wall it created as a reason to route
+around the site. Real failure mode (2026-10-20, corrected by the owner): an
+agent had been submitting from empty sessions all day while the default
+profile held everything needed to one-click through the same walls. **Start
+every outreach session from the standing profile; only leave it when a target
+explicitly conflicts with it.**
+
+## Same-tab OAuth redirects are fully scriptable — don't fear the Google wall
+
+Uneed's "Continue with Google" navigated in the same tab (no popup): the
+account chooser and the consent screen are ordinary DOM, and every step —
+choose account, click Continue — lands with a normal `opencli click <ref>`.
+The popup variant (Fazier) is the one the driver cannot capture; when a popup
+OAuth doesn't come back, don't conclude "Google login is unusable" — check
+whether the site also offers email sign-up, or whether a second trigger
+navigates in-tab. The chooser lists whatever accounts the standing profile
+already holds; picking the designated persona is one click.
+
+## Binary uploads into SPA forms: DataTransfer injection, and re-probe after every upload
+
+File inputs that are `sr-only`/visually-hidden never fire a fileChooser event,
+so the upload command dead-ends. The working pattern (proven on Fazier,
+Uneed, aiboom same day): push the file into the page as base64 chunks eval'd
+into `atob()` strings (≤25KB per chunk — 60KB blows the argument limit), join
+into a `Uint8Array`, wrap in `File`, add to a `DataTransfer`, assign
+`input.files = dt.files`, dispatch `change`. Two things the day's runs added:
+
+- **Every successful upload re-renders the form and changes the
+  `input[type=file]` index set** — the logo input disappears once its preview
+  replaces it, gallery indices shift. Re-probe `document.querySelectorAll('input[type=file]')`
+  before every push instead of caching indices.
+- A multiple-gallery input often clears itself after each React-processed
+  change; pushing images **one at a time, one change event each**, is the
+  reliable path even when the input accepts `multiple`.
+
+A reusable helper lives at `songprint/.backlink/_push_file.sh`
+(`bash _push_file.sh <session> <file> <inputIndex> <mime> <filename>`).
+Convert WebP assets to JPG first — some forms whitelist only png/jpeg/gif.
+
+## React-controlled date inputs ignore every typed-event trick
+
+`opencli type` on `input[type=date]` reports success and writes nothing; the
+value also never sticks through re-renders. What works is the native setter
+plus synthetic events —
+`Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'YYYY-MM-DD')`
+then `input` + `change` bubbles. Verify by reading `.value` back, then confirm
+the dependent button's label changed (Fazier's "Schedule" became
+"Schedule for 10/22/2026" and un-disabled — that label is the real receipt
+that React state took the value).
+
+## Multi-select dropdowns that close on every pick
+
+Custom select components (Fazier topics) close the dropdown after each
+selection and re-render their options, so refs die between picks. Reopen,
+re-mark, re-find, click — once per item. Budget three rounds for "select up
+to three".
+
+## Reciprocal-badge gates batch into one footer deploy
+
+Sites that require a backlink badge before accepting/verifying a listing
+(Fazier, aitechviral, aiboom) should be **batched**: collect every badge
+requirement, add all badges to the source site's footer in one edit, deploy
+once, then return to each site and hit Verify. Deploying per-site wastes
+builds; worse, deploying the footer from the wrong Cloudflare account
+silently produces a site without the badges (songprint's worker lives in the
+MAIN account — deploy with `CLOUDFLARE_ACCOUNT_ID` + Global Key + email, not
+the NEORAINBOY token).
+
+## Launch-page platforms: the upsell page is not the verdict
+
+Fazier's flow ends by redirecting to `/premium` with no skip link — that does
+**not** mean the launch failed. The launch page (`/launches/<slug>`) exists
+immediately, owner-visible, and the upsell is just an offer. Judge by
+navigating to the product URL, not by looking for a "skip" on the paywall.
+Uneed's variant: "Preview my product" lets a robot fetch and build the listing
+first (name/url only), the signup wall comes after, and the free launch queue
+is months out while the product page itself is live the moment you save it —
+the listing/backlink is already real. Uneed's completion checklist names the
+exactly-one missing item (e.g. "❌ Logo"); fix just that and save.

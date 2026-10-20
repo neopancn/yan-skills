@@ -35,6 +35,15 @@ same inbox. This is the key that turns Lane B's account half into real work.
    Skimming `accounts.json`/provider sessions costs seconds; skipping a
    registrable target costs a listing. Only when no one-click path exists, fall
    through to the alias flow below.
+   **The standing outreach profile makes this the default, not the fallback**:
+   outreach sessions start from the designated profile (opencli `msht4gxm`,
+   which holds two aged Google accounts), so a Google one-click is expected to
+   work on the first try. Same-tab OAuth redirects (Uneed) are fully
+   scriptable — chooser and consent are plain DOM, one `click <ref>` each; a
+   popup-based variant (Fazier) is the only uncapturable shape, and even then
+   the site's email sign-up remains. See field-notes, "Same-tab OAuth
+   redirects are fully scriptable" and "The outreach browser profile is a
+   standing identity".
 3. Register with a **per-target alias** on the mailbox domain — the shared form
    is `<project>-<target>@<mailbox-domain>` — plus the profile's submitter name.
    Never one fixed address across targets (it fingerprints the batch), never

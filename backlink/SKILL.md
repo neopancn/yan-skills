@@ -3,7 +3,7 @@ name: backlink
 description: Use for backlink work - finding, qualifying, submitting, analyzing or verifying backlinks, directory and blog-comment placements, competitor link sources, anchors, toxic links and disavow, outreach templates, and reading Ahrefs, Semrush or Similarweb backlink and traffic reports (外链、反链、去哪发、提交目录、评论外链、发出去没有、毒性、disavow、竞品外链、竞品导流、数据面板). This Skill owns what to read from those reports and which placements to pursue. Not for generic logged-in browser driving, sessions or doctor faults (use opencli), and not for sitemap, IndexNow or Search Console indexing operations (use rankup); index-submission here is only a reference kept apart from backlinks.
 ---
 
-<skill name="backlink" version="3.3.1" body-format="xml">
+<skill name="backlink" version="3.3.2" body-format="xml">
 
 <why-xml>
 The frontmatter above stays YAML because the Skill loader reads it for
