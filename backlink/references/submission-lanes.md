@@ -5,16 +5,23 @@ tags. Both lanes produce work; neither is a leftover.
 
 | | Lane A — unattended | Lane B — staged queue |
 | --- | --- | --- |
-| Cohorts | `open` | `captcha`, `account-captcha`, `email-verify`, `manual-review` |
+| Cohorts | `open`, `captcha-text` | `captcha` (graphic), `account-captcha`, `email-verify`, `manual-review` |
 | What the driver does | fills, clicks the real submit control, reads the result | fills **everything it is allowed to**, walks to the final step, and **leaves the page open** |
 | Ends at | `submitted` / `outcome-unknown` | `staged-captcha` — a form on screen needing a code and a click |
 | Who finishes it | nobody | the owner, in one sitting, seconds per site |
 
-The driver never types a CAPTCHA answer, never pays, and never ticks a terms
-box — those stop the row and move it to Lane B with whatever could legitimately
-be filled already in place. It **does** create accounts: the owner has
-authorized registration, and the one thing a script cannot do — read the
-mailbox — is handled by the separate `mailbox` Skill (see below).
+The driver never types an answer into a **graphic** challenge (image grid,
+slide, selection), never pays, and never ticks a terms box — those stop the row
+and move it to Lane B with whatever could legitimately be filled already in
+place. The one carve-out (owner directive 2026-10-22): **`captcha-text`** —
+SOLVE MEDIA adcopy-style "Enter the following" text puzzles — is Lane A, solved
+by screenshotting the widget region and reading the phrase off the image (full
+playbook in field-notes, "The phpLD + SOLVE MEDIA adcopy family"). Reading a
+rendered puzzle is the same work a person does; routing it to an external
+CAPTCHA-solving service stays forbidden on both lanes. It **does** create
+accounts: the owner has authorized registration, and the one thing a script
+cannot do — read the mailbox — is handled by the separate `mailbox` Skill (see
+below).
 
 ## Account registration and email verification (`mailbox`)
 
@@ -90,6 +97,7 @@ cohorts cost different things:
 | Cohort | What the run needs |
 | --- | --- |
 | `open` | nobody. The only cohort that needs no second party at all. |
+| `captcha-text` | nobody — screenshot-region recognition of a rendered text puzzle (adcopy family), Lane A per the 2026-10-22 directive |
 | `captcha` | a human at the keyboard for the whole run |
 | `account` | the `mailbox` Skill for the verification mail; the identity is a standing decision, not a per-row one |
 | `account-captcha` | both of the above |

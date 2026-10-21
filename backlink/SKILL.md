@@ -291,7 +291,10 @@ judges "can this page be filled, and what gates it" from the census and the
 screenshot, and may overrule the suggestion. The mechanical rule safe-fill
 still enforces: it only proceeds on one unambiguous qualifying form. A CAPTCHA
 page may be staged only when the owner explicitly accepts normal human
-completion; never bypass or solve it by an external CAPTCHA service.
+completion; never bypass or solve it by an external CAPTCHA service — but a
+rendered text puzzle (SOLVE MEDIA adcopy "Enter the following") the agent can
+read off its own screenshot is agent-solvable Lane A work per the 2026-10-22
+directive, see the fill step below and field-notes for the full playbook.
 <cmd><![CDATA[
 node scripts/inspect-page.mjs --session "inspect-comment-scan" --mode comment \
   --url https://example.com/article --out .backlink/scan.json
@@ -323,11 +326,17 @@ state, and installs a submit guard. **Standing authorization (local-fork
 2026-10-20, owner's directive): invoking this Skill authorizes end-to-end
 submissions** — on free, open, captcha-free targets the agent fills AND clicks
 Submit, then records the receipt in the ledger with evidence. The guard is now
-only a tripwire for gated forms. When the form hits a CAPTCHA, payment step, or
-account/registration wall, do NOT solve, pay, or register: release only the
+only a tripwire for gated forms. When the form hits a payment step or an
+account/registration wall, do NOT pay or register-on-a-whim: release only the
 guard with `release-submit-guard.mjs --human-handoff`, leave the filled form
-visibly ready, and stop. The agent must not solve the challenge — captcha
-routes are always handoff-only, no batch authorization overrides this.
+visibly ready, and stop. CAPTCHAs split in two (owner directive 2026-10-22):
+**text puzzles the agent can read are Lane A** — SOLVE MEDIA adcopy-style
+"Enter the following" widgets are solved by screenshotting the widget region and
+reading the phrase (full playbook in field-notes, "The phpLD + SOLVE MEDIA
+adcopy family"). **Image-selection, grid, and slide challenges remain
+handoff-only.** An external CAPTCHA-solving service is never used by either
+lane; reading a rendered puzzle in-agent is not a bypass, it is the same work a
+person does — and no batch authorization overrides the graphic-challenge rule.
 </fill>
 <staged-queue>
 Lane B leaves forms on screen for the owner to finish. **One session name per

@@ -874,6 +874,71 @@ silently produces a site without the badges (songprint's worker lives in the
 MAIN account — deploy with `CLOUDFLARE_ACCOUNT_ID` + Global Key + email, not
 the NEORAINBOY token).
 
+## The phpLD + SOLVE MEDIA adcopy family: screenshot-region recognition beats every regex (2026-10-21)
+
+A whole network of near-identical directories runs the same stack: a phpLD-style
+`/register` + `/submit` pair, `form#thisform` with hidden `ccheck` / `randkey` /
+`randkey2` anti-CSRF tokens, and **SOLVE MEDIA's adcopy widget** (`#adcopy-outer`)
+on both pages. The challenge is a *text* puzzle — two distorted words on a tinted
+panel under "Enter the following:" — not an image-selection grid.
+
+**Identification markers** (all present together, cheap to check in one eval):
+
+- `/register` and `/submit` both reachable, both forms `id=thisform`
+- `#adcopy-outer` exists, containing `#adcopy_response` (text answer) and
+  `#adcopy_challenge` (hidden)
+- hidden `ccheck` + `randkey` + `randkey2` inputs; submit controls are
+  `input[type=submit]` with `value=Register` / `value=Submit Website`
+- the answer input is `#adcopy_response`; the refresh control is
+  `#adcopy-link-refresh`
+
+**The working technique — screenshot the region, then read it.** A full-page
+screenshot plus a PIL crop of the widget's `getBoundingClientRect()` box is
+enough for a multimodal model to read these puzzles reliably; every phrase is
+plain English ("now look here", "butter side down", "fair and square"). One
+eval gets the box, one screenshot, one crop, one read — then
+`fill #adcopy_response <phrase>` and click the real button. Do not attempt OCR
+libraries or regex against the page HTML; the phrase is only in the image.
+
+```bash
+# 1. box
+opencli browser "$S" eval "() => { const r = document.querySelector('#adcopy-outer').getBoundingClientRect(); return JSON.stringify({x:r.x,y:r.y,w:r.width,h:r.height}); }"
+# 2. screenshot + crop that box (PIL), read the crop, fill the answer
+opencli browser "$S" fill "#adcopy_response" "<phrase read off the crop>"
+```
+
+Four traps, each of which silently costs a submission:
+
+1. **Challenges expire in roughly 2–5 minutes.** An expired challenge makes the
+   site's JS block the submit *silently* — the click reports `hit: target`, no
+   POST fires, no error renders, the page just sits there. The tell is "click
+   landed, nothing happened, no error": click `#adcopy-link-refresh`, re-screenshot,
+   re-read, re-answer. Do not re-click with the old answer.
+2. **Element indices drift after any failed submit.** The error banner re-renders
+   the page and every `[N]` index shifts (observed: submit button 47 → 48). A
+   stale index lands on a hidden `randkey` input and does nothing at all. Either
+   re-run `state` for fresh indices or click by CSS selector
+   (`input[type=submit][value=Register]`) — the selector survived every drift.
+3. **`form.submit` is shadowed by the submit button.** The button's
+   `name=submit` property masks the method, so `f.submit()` throws
+   `f.submit is not a function`. `requestSubmit()` runs but a page-level handler
+   can still cancel it. The button click is the only reliable path.
+4. **Category selection may not survive.** A pick of "Computers" landed as
+   "Internet" on one family member. Harmless for the link, but record what the
+   public page actually shows, not what was selected.
+
+**Success signal and verification:** a live submission changes the URL to
+`/listings<id>/<slug>`. Confirm from outside with a cookie-less fetch: HTTP 200
+plus the outbound `href` present in the public HTML. Session-cookie views prove
+nothing (see the blog-comment section above).
+
+**Volume discipline — this is one operator's template family.** The domains are
+near-clones (same header, same footer, same copyright line), so N listings from
+N family members is one relationship, not N. Cap it (6 were live by 2026-10-22,
+owner-declared enough) and spend the next effort on genuinely distinct
+directories and launch platforms. Each registration still needs its own
+per-target mailbox alias.
+
 ## Launch-page platforms: the upsell page is not the verdict
 
 Fazier's flow ends by redirecting to `/premium` with no skip link — that does
