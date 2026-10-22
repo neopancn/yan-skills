@@ -1017,3 +1017,76 @@ Short generic comments ("Nice post — ...") with one body link pass where long
 essays get held. Keep the anchor in the Name field, keep the body to a single
 sentence, and cap body-link comments well under half the batch.
 
+
+## Generic form driver: what it actually gets right and wrong (2026-10-22)
+
+Walking 10+ unrelated AI directories with one driver beats hand-driving each
+page, but only if the driver is honest about where it stops. The shape that
+worked:
+
+1. enumerate every visible `input/textarea/select`, tag each with `data-bf`,
+   and record label + placeholder + name + required;
+2. classify by the concatenated label, fill through the native value setter and
+   dispatch `input` + `change` (plain PHP/Webflow/WP forms accept this);
+3. tag visible buttons `data-bbtn`, click the one whose text matches
+   `submit|send|add tool|continue`, then re-read URL and body text;
+4. write the whole census + plan to a JSON file so the next attempt does not
+   have to guess again.
+
+Where it fails, and what to do instead:
+
+- **Silent no-op.** A click that produces no request, no form reset and no
+  message is a failure, not a submission. (listedai.co: button handler throws;
+  reviewai.net: two clicks, no receipt.) Never ledger a site on button-click
+  alone.
+- **Required checkbox groups.** A form can look complete and still refuse to
+  submit because a *group* has no value (futuretools.io `pricing_tier`). Read
+  the page for `checkbox`/`radio` groups the mapper skipped and pick the honest
+  one before clicking.
+- **Placeholder-only fields.** Some React forms ship inputs with no `name` and
+  no `id`, so nothing can be targeted by attribute (verifiedtools.info). Fall
+  back to index-based overrides (`i0`, `i1`, ...) captured from the census.
+- **Framework embeds.** A "submit" page whose form lives in an iframe
+  (beehiiv, Tally, Typeform) shows zero fields to the page-level census. Read
+  the iframe `src` first and drive that document instead.
+- **Client-side route buttons.** A button labelled "Submit a Tool" that neither
+  navigates nor opens a form (theaipedia.io, nextaitool.com) is a dead end in
+  automation; stop and mark it manual instead of retrying the click.
+
+## Preserve a real newline in a body link: set the value, do not type it
+
+The dofollow trick only works if the line break inside `<a ...>` is a real
+newline, and keystroke typing turns Enter into a submit or a lost character.
+Set the textarea through the native setter with the newline already inside the
+string (`href="https://example.com/page\n"`), dispatch `input`/`change`, then
+click submit. Confirm afterwards that the stored value still contains a newline
+before trusting the post.
+
+## Verify a public comment with a cache buster
+
+Caching plugins (Perfmatters, WP Rocket) serve the comment page without the
+newly approved comment on the first anonymous fetch. Re-fetch the permalink with
+a query string (`?x=1`, `?cb=<ts>`) and `cache-control: no-cache` before
+concluding "moderated" - one comment in this batch looked invisible until the
+cache-busted URL revealed it, dofollow and all.
+
+## Similarweb referral mining: filter link-farm clones before probing
+
+Pulling referring domains for six AI directories returned ~400 hosts, and the
+form probe found only a handful of real forms. The rejects shared fingerprints:
+
+- the same `/sites/<id>.html` URL shape across several domains
+  (aicangku.com, ainvp.com, haouu.com, hooaoo.com) - one operator, many skins;
+- the same article slug copied onto unrelated domains
+  (`trai-nghiem-game-dinh-cao-tai-32295` on bulldogtheatre.com,
+  pahlindustrial.com, blueskiesmktg.com).
+
+Either pattern means skip the whole family, not just the one host that showed a
+form.
+
+## Free the automation window pool automatically
+
+`dedicated-pool-exhausted` is the most common way a batch dies halfway. Every
+driver should close its session on exit (a `process.on('exit')` hook is enough),
+and on the first pool error it should list sessions, close the longest-idle one,
+and retry the open instead of aborting the run.
