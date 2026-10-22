@@ -950,3 +950,70 @@ first (name/url only), the signup wall comes after, and the free launch queue
 is months out while the product page itself is live the moment you save it —
 the listing/backlink is already real. Uneed's completion checklist names the
 exactly-one missing item (e.g. "❌ Logo"); fix just that and save.
+
+## React/Vue controlled forms: typing beats value injection
+
+Writing `el.value = x` plus an `input` event is enough for plain HTML forms, but
+on hydrated React/Vue forms the state layer often wins and reverts the field on
+the next re-render — you see `field:ok`, then the value is empty right after a
+select/category change. The reliable move is real keystrokes:
+`opencli browser <sess> type "<css selector>" "<text>"`. Reserve the JS setter
+for plain GET/POST forms (phpLD, old PHP directories) and for hidden fields.
+
+**A `<meta name="description">` will shadow `[name=description]`.** Always
+scope selectors by element type when the field name is generic:
+`textarea[name=description]`, not `[name=description]`. A selector that quietly
+matches a `<meta>` reads as `value === undefined` and looks like a React bug.
+
+**Custom selectors are not `<select>`.** Radix/shadcn "Select ..." buttons,
+uni-app pickers and Feishu 问卷 controls keep their options out of the DOM until
+opened by a real click, and assigning `.value` proves nothing. If the field is
+optional, submit without it. If it is required, drive the trigger button and
+read `[role=option]` — do not burn ten calls guessing.
+
+**Silent-failure taxonomy.** Distinguish "posted" from "the form ate it":
+
+- no POST + message element stays empty (`data-action=...` handler never
+  attached) → not submitted, park it;
+- `form.checkValidity() === true` yet the site answers "check highlighted
+  fields" → server-side rule, park it;
+- values retained after clicking submit → nothing was sent;
+- values cleared with a thank-you/next-step copy → submitted.
+
+**Reciprocal-link gates are a hard stop, not a form to fill.** "免费提交" pages
+that print an `<a href>` snippet to paste into your homepage cost a site edit;
+same for Fazier-style badges. Reject and move on.
+
+**Language-gated Chinese directories.** Some explicitly say 纯外语网站暂时不收录
+(pure foreign-language sites are not accepted). Filling the form still counts
+as nothing — check the copy before spending calls.
+
+## Automation window budget is shared
+
+OpenCLI keeps four dedicated windows for the whole machine. Parallel agents
+(Skill runs, other projects) evict each other: a session that worked one call
+ago answers `session_not_found` or `dedicated-pool-exhausted` mid-flow. Plan
+for it — one site per session, close on success, and re-open rather than
+assuming state survived. Never batch 30 sites into one long script without a
+retry wrapper.
+
+**opencli eval output hygiene.** PowerShell merges stderr into the captured
+string, so a single npm "Update available" line corrupts a JSON result. Use
+base64 for the payload, `2>$null` for the call, strip non-ASCII in the returned
+object, and keep the JSON under ~1.5 KB — long payloads come back truncated and
+unparseable.
+
+## Comment verification: rel="ugc" is the dofollow tell
+
+When a WordPress comment goes live, inspect the rendered markup, not the form:
+
+- author link (Name field) is almost always `rel="ugc external nofollow"`;
+- a body link keeps only `rel="ugc"` when the newline trick beat
+  `wp_rel_nofollow()` — that is the dofollow link worth counting;
+- confirm from a cookie-less HTTP fetch of the permalink; the session view
+  proves nothing.
+
+Short generic comments ("Nice post — ...") with one body link pass where long
+essays get held. Keep the anchor in the Name field, keep the body to a single
+sentence, and cap body-link comments well under half the batch.
+
